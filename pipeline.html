@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GenAI Pipeline</title>
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif, sans-serif;
+            max-width:700px;
+            margin: 50px auto;
+            padding:30px;
+            background-color: #c2f0f4;
+        }
+        
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #43b6b4;
+            padding-bottom: 10px;
+        }
+        
+        .step {
+            display: none;
+        }
+        
+        .step.active {
+            display: block;
+        }
+        
+        h2 {
+            color: #666;
+            margin-top: 0;
+        }
+        
+        label {
+            display: block;
+            margin: 15px 0 5px 0;
+            font-weight: bold;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        
+        button {
+            padding: 10px 20px;
+            margin: 10px 5px 0 0;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .next-btn {
+            background-color: #43b6b4;
+            color: white;
+        }
+        
+        .back-btn {
+            background-color: #8e9899;
+            color: white;
+        }
+        
+        .option {
+            padding: 12px;
+            margin: 8px 0;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            background: white;
+        }
+        
+        .option:hover {
+            border-color: #43b6b4;
+        }
+        
+        .option.selected {
+            border-color: #43b6b4;
+            background-color: #e8f5e9;
+        }
+        
+        .summary {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        
+        .summary-line {
+            padding: 5px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .note {
+            font-size: 12px;
+            color: #666;
+            font-style: italic;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GenAI@Berkeley × Netflix Pipeline</h1>
+        
+        <div class="step active" id="step1">
+            <h2>Step 1: Upload Image</h2>
+            <input type="file" id="img" accept="image/*">
+            <div class="note" id="imgInfo"></div>
+            <button class="next-btn" onclick="goNext(1)">Next</button>
+        </div>
+
+        <div class="step" id="step2">
+            <h2>Step 2: Choose Mode</h2>
+            <div id="modeGroup">
+                <div class="option" onclick="pick('mode','2d',this,'modeGroup')">2D Render</div>
+                <div class="option" onclick="pick('mode','3d',this,'modeGroup')">3D Model</div>
+            </div>
+            <button class="back-btn" onclick="goBack(2)">Back</button>
+            <button class="next-btn" onclick="goNext(2)">Next</button>
+        </div>
+
+        <div class="step" id="step3">
+            <h2>Step 3: Output Settings</h2>
+            <label>Output Directory:</label>
+            <input type="text" id="outdir" value="." placeholder=".">
+            <label>Filename (no extension):</label>
+            <input type="text" id="outname" placeholder="output">
+            <button class="back-btn" onclick="goBack(3)">Back</button>
+            <button class="next-btn" onclick="goNext(3)">Next</button>
+        </div>
+
+        <div class="step" id="step4">
+            <h2>Step 4: Provider</h2>
+            <div id="providerGroup">
+                <div class="option" onclick="pick('provider','a1111',this,'providerGroup')">A1111 (local, 2D)</div>
+                <div class="option" onclick="pick('provider','replicate',this,'providerGroup')">Replicate (2D)</div>
+                <div class="option" onclick="pick('provider','meshy',this,'providerGroup')">Meshy (3D)</div>
+            </div>
+            <div id="keybox" style="display:none; margin-top:15px;">
+                <label>API Key:</label>
+                <input type="password" id="apikey">
+            </div>
+            <button class="back-btn" onclick="goBack(4)">Back</button>
+            <button class="next-btn" onclick="goNext(4)">Next</button>
+        </div>
+
+        <div class="step" id="step5">
+            <h2>Step 5: Size & Batch</h2>
+            <label>Size:</label>
+            <select id="size">
+                <option>512x512</option>
+                <option>768x768</option>
+                <option selected>1024x1024</option>
+                <option>1536x1536</option>
+            </select>
+            <label>Batch (1-8):</label>
+            <input type="number" id="batch" value="1" min="1" max="8">
+            <button class="back-btn" onclick="goBack(5)">Back</button>
+            <button class="next-btn" onclick="goNext(5)">Next</button>
+        </div>
+
+        <div class="step" id="step6">
+            <h2>Step 6: Object Type</h2>
+            <div id="objtypeGroup">
+                <div class="option" onclick="pick('objtype','creature',this,'objtypeGroup')">Creature</div>
+                <div class="option" onclick="pick('objtype','human',this,'objtypeGroup')">Human</div>
+                <div class="option" onclick="pick('objtype','vehicle',this,'objtypeGroup')">Vehicle</div>
+                <div class="option" onclick="pick('objtype','building',this,'objtypeGroup')">Building</div>
+                <div class="option" onclick="pick('objtype','prop',this,'objtypeGroup')">Prop</div>
+                <div class="option" onclick="pick('objtype','abstract',this,'objtypeGroup')">Abstract</div>
+            </div>
+            <button class="back-btn" onclick="goBack(6)">Back</button>
+            <button class="next-btn" onclick="goNext(6)">Next</button>
+        </div>
+
+        <div class="step" id="step7_2d">
+            <h2>Step 7: 2D Style</h2>
+            <label>Style:</label>
+            <div id="styleGroup">
+                <div class="option" onclick="pick('style','photoreal',this,'styleGroup')">Photorealistic</div>
+                <div class="option" onclick="pick('style','cartoon',this,'styleGroup')">Cartoon</div>
+                <div class="option" onclick="pick('style','watercolor',this,'styleGroup')">Watercolor</div>
+                <div class="option" onclick="pick('style','sketch',this,'styleGroup')">Sketch</div>
+            </div>
+            <label style="margin-top:20px;">Strictness:</label>
+            <div id="strictGroup">
+                <div class="option" onclick="pick('strict','low',this,'strictGroup')">Low</div>
+                <div class="option" onclick="pick('strict','medium',this,'strictGroup')">Medium</div>
+                <div class="option" onclick="pick('strict','high',this,'strictGroup')">High</div>
+            </div>
+            <button class="back-btn" onclick="goBack(7)">Back</button>
+            <button class="next-btn" onclick="goNext(7)">Next</button>
+        </div>
+
+        <div class="step" id="step7_3d">
+            <h2>Step 7: 3D Settings</h2>
+            <label>Quality:</label>
+            <div id="qualityGroup">
+                <div class="option" onclick="pick('quality','draft',this,'qualityGroup')">Draft</div>
+                <div class="option" onclick="pick('quality','standard',this,'qualityGroup')">Standard</div>
+                <div class="option" onclick="pick('quality','high',this,'qualityGroup')">High</div>
+            </div>
+            <label style="margin-top:20px;">Style:</label>
+            <div id="style3dGroup">
+                <div class="option" onclick="pick('style3d','realistic',this,'style3dGroup')">Realistic</div>
+                <div class="option" onclick="pick('style3d','toy',this,'style3dGroup')">Toy/Cartoon</div>
+                <div class="option" onclick="pick('style3d','sculpture',this,'style3dGroup')">Sculpture</div>
+            </div>
+            <button class="back-btn" onclick="goBack(7)">Back</button>
+            <button class="next-btn" onclick="goNext(7)">Next</button>
+        </div>
+
+        <div class="step" id="step8">
+            <h2>Summary</h2>
+            <div class="summary" id="summary"></div>
+            <button class="back-btn" onclick="goBack(8)">Back</button>
+            <button class="next-btn" onclick="finish()">Confirm</button>
+        </div>
+
+        <div class="step" id="done">
+            <h2>Done!</h2>
+            <p>Session saved (check console for JSON)</p>
+            <button class="next-btn" onclick="location.reload()">Start Over</button>
+        </div>
+    </div>
+
+    <script>
+        var data = {};
+        
+        document.getElementById('img').addEventListener('change', function(e) {
+            var f = e.target.files[0];
+            if(f) {
+                data.img = f.name;
+                document.getElementById('imgInfo').textContent = 'Loaded: ' + f.name;
+            }
+        });
+
+        function pick(k, v, el, groupId) {
+            data[k] = v;
+            var group = groupId ? document.getElementById(groupId) : el.parentElement;
+            var opts = group.querySelectorAll('.option');
+            opts.forEach(function(o) { o.classList.remove('selected'); });
+            el.classList.add('selected');
+            
+            /* show/hide api key input */
+            if(k === 'provider') {
+                if(v === 'replicate' || v === 'meshy') {
+                    document.getElementById('keybox').style.display = 'block';
+                } else {
+                    document.getElementById('keybox').style.display = 'none';
+                }
+            }
+        }
+
+        function goNext(n) {
+            /* validation */
+            if(n === 1 && !data.img) {
+                alert('pick an image first');
+                return;
+            }
+            if(n === 4) {
+                var key = document.getElementById('apikey').value;
+                if((data.provider === 'replicate' || data.provider === 'meshy') && !key) {
+                    alert('need api key');
+                    return;
+                }
+                data.key = key || null;
+            }
+            if(n === 3) {
+                data.outdir = document.getElementById('outdir').value;
+                data.outname = document.getElementById('outname').value;
+            }
+            if(n === 5) {
+                data.size = document.getElementById('size').value;
+                data.batch = document.getElementById('batch').value;
+            }
+            if(n === 7) {
+                if(data.mode === '2d') {
+                    if(!data.style || !data.strict) {
+                        alert('pick both style and strictness');
+                        return;
+                    }
+                } else {
+                    if(!data.quality || !data.style3d) {
+                        alert('pick both quality and style');
+                        return;
+                    }
+                }
+            }
+
+            var currStep = n === 7 ? (data.mode === '2d' ? 'step7_2d' : 'step7_3d') : 'step' + n;
+            document.getElementById(currStep).classList.remove('active');
+            
+            if(n === 6) {
+                /* show correct style step */
+                if(data.mode === '2d') {
+                    document.getElementById('step7_2d').classList.add('active');
+                } else {
+                    document.getElementById('step7_3d').classList.add('active');
+                }
+            } else if(n === 7) {
+                showSummary();
+                document.getElementById('step8').classList.add('active');
+            } else {
+                document.getElementById('step' + (n+1)).classList.add('active');
+            }
+        }
+
+        function goBack(n) {
+            var curr = 'step' + n;
+            if(n === 7) {
+                curr = data.mode === '2d' ? 'step7_2d' : 'step7_3d';
+            }
+            document.getElementById(curr).classList.remove('active');
+            
+            if(n === 8) {
+                var prev = data.mode === '2d' ? 'step7_2d' : 'step7_3d';
+                document.getElementById(prev).classList.add('active');
+            } else {
+                document.getElementById('step' + (n-1)).classList.add('active');
+            }
+        }
+
+        function showSummary() {
+            var html = '';
+            html += '<div class="summary-line"><b>Image:</b> ' + data.img + '</div>';
+            html += '<div class="summary-line"><b>Mode:</b> ' + data.mode + '</div>';
+            html += '<div class="summary-line"><b>Output:</b> ' + data.outdir + '/' + data.outname + '</div>';
+            html += '<div class="summary-line"><b>Provider:</b> ' + data.provider + (data.key ? ' (key set)' : '') + '</div>';
+            html += '<div class="summary-line"><b>Size/Batch:</b> ' + data.size + ' / ' + data.batch + '</div>';
+            html += '<div class="summary-line"><b>Object:</b> ' + data.objtype + '</div>';
+            
+            if(data.mode === '2d') {
+                html += '<div class="summary-line"><b>Style:</b> ' + data.style + '</div>';
+                html += '<div class="summary-line"><b>Strictness:</b> ' + data.strict + '</div>';
+            } else {
+                html += '<div class="summary-line"><b>Quality:</b> ' + data.quality + '</div>';
+                html += '<div class="summary-line"><b>3D Style:</b> ' + data.style3d + '</div>';
+            }
+            
+            document.getElementById('summary').innerHTML = html;
+        }
+
+        function finish() {
+            console.log('Session data:', data);
+            document.getElementById('step8').classList.remove('active');
+            document.getElementById('done').classList.add('active');
+        }
+    </script>
+</body>
+</html>
