@@ -15,10 +15,10 @@ public class GenAIPipelineWindow : EditorWindow
     private const double PollInterval = 1.0;
 
      // provider options
-    private readonly string[] providerLabels = new[] {
-        "BlackForestLabs (2D→3D)", "Qwen (2D→3D)"
+    private readonly string[] providerLabels = new[] { 
+        "BlackForestLabs", "Qwen"
     };
-    private readonly string[] providerValues = new[] {
+    private readonly string[] providerValues = new[] { 
         "blackforestlabs", "qwen"
     };
     private int providerIdx = 0;
@@ -68,7 +68,7 @@ public class GenAIPipelineWindow : EditorWindow
         }
     }
 
-    private void DrawBasics()
+    private void DrawBasics() // drawing input stuff
     {
         Header("1) Input 2D Drawing");
         using(new EditorGUILayout.VerticalScope("box"))
@@ -96,12 +96,12 @@ public class GenAIPipelineWindow : EditorWindow
                 }
             }
 
-            // defaulting to 3d
+            // default mode is 3d
             asset.mode = GUILayout.Toggle(asset.mode == "3d", "3D (target)") ? "3d" : "2d";
         }
     }
 
-    private void DrawProvider()
+    private void DrawProvider() // which model to use
     {
         Header("2) Provider (model used for 2D→3D)");
         using(new EditorGUILayout.VerticalScope("box"))
@@ -112,7 +112,7 @@ public class GenAIPipelineWindow : EditorWindow
             providerIdx = Mathf.Clamp(idx, 0, providerValues.Length - 1);
             asset.provider = providerValues[providerIdx];
 
-            // keys
+            // api key stuff
             if(asset.provider == "blackforestlabs" || asset.provider == "qwen")
             {
                 asset.apiKey = EditorGUILayout.PasswordField("API Key (not saved to JSON)", asset.apiKey ?? "");
@@ -121,7 +121,7 @@ public class GenAIPipelineWindow : EditorWindow
             }
 
             if(asset.mode == "3d")
-                EditorGUILayout.HelpBox("This provider will be recorded in the snapshot so backend can route to the right 2D→3D model.", MessageType.Info);
+                EditorGUILayout.HelpBox("This provider will be added to the snapshot so backend can route to the right 2D-->3D model.", MessageType.Info);
             else
                 EditorGUILayout.HelpBox("You selected 2D mode, but these providers are primarily for 2D→3D.", MessageType.Warning);
         }
@@ -146,12 +146,12 @@ public class GenAIPipelineWindow : EditorWindow
         }
     }
 
-    private void DrawSemantics()
+    private void DrawSemantics() 
     {
         Header("4) Object Type & Style Hints");
         using(new EditorGUILayout.VerticalScope("box"))
         {
-            string[] objs = { "creature","human","vehicle","building","prop","abstract" };
+            string[] objs = { "creature","human","vehicle","building","prop","abstract" }; // TODO: sync with vlm categories
             int oi = Array.IndexOf(objs, asset.objectType);
             if(oi < 0) oi = 0;
             oi = GUILayout.SelectionGrid(oi, new[] { "Creature","Human","Vehicle","Building","Prop","Abstract" }, 3);
@@ -159,7 +159,7 @@ public class GenAIPipelineWindow : EditorWindow
 
             if(asset.mode == "2d")
             {
-                string[] s2 = { "photoreal","cartoon","watercolor","sketch" };
+                string[] s2 = { "photoreal","cartoon","watercolor","sketch" }; // probably gonna change these later
                 int si = Array.IndexOf(s2, asset.style2D); if(si < 0) si = 0;
                 si = GUILayout.SelectionGrid(si, new[] { "Photoreal","Cartoon","Watercolor","Sketch" }, 4);
                 asset.style2D = s2[si];
@@ -208,11 +208,13 @@ public class GenAIPipelineWindow : EditorWindow
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(6);
-            if(GUILayout.Button("Create Folders + Save .last_session_min.json", GUILayout.Height(30)))
+            if(GUILayout.Button("Create Folders + Save Snapshot & Input", GUILayout.Height(30)))
             {
-                CreateFolders(defaultRoot, nameStem);
-                SaveSnapshotJson();
-                EditorUtility.DisplayDialog("Saved", "Snapshot written to project root.\nFolders ensured in Assets/GenAI/…", "OK");
+                string stem = string.IsNullOrEmpty(asset.outName) ? GuessStem(asset.imagePath) + "_" + asset.mode : asset.outName;
+                CreateFolders(defaultRoot, stem);
+                SaveSnapshotJson(stem);
+                CopyInputImageToFolder(stem);
+                EditorUtility.DisplayDialog("Saved", "Snapshot and input image saved to Input folder.\nFolders ensured in Assets/GenAI/…", "OK");
             }
 
             EditorGUILayout.Space(4);
@@ -262,9 +264,9 @@ public class GenAIPipelineWindow : EditorWindow
         AssetDatabase.Refresh();
     }
 
-    private void SaveSnapshotJson()
+    private void SaveSnapshotJson(string stem)
     {
-        // build json snapshot
+        // just building the json object with all the settings
         var root = new JObject
         {
             ["basics"] = new JObject
@@ -299,10 +301,46 @@ public class GenAIPipelineWindow : EditorWindow
             } : null
         };
         var json = root.ToString(Newtonsoft.Json.Formatting.Indented);
-        var outPath = Path.Combine(Directory.GetCurrentDirectory(), ".last_session_min.json");
-        File.WriteAllText(outPath, json);
+        
+        // save it to the input folder
+        string inputFolder = $"Assets/GenAI/{stem}/Input";
+        string jsonPath = Path.Combine(inputFolder, "pipeline_metadata.json");
+        File.WriteAllText(jsonPath, json);
+        
+        // still saving to root too just in case we need it later
+        var rootPath = Path.Combine(Directory.GetCurrentDirectory(), ".last_session_min.json");
+        File.WriteAllText(rootPath, json);
+        
         SpawnImageInScene(asset.imagePath);
         AssetDatabase.Refresh();
+        
+        Debug.Log($"saved metadata to: {jsonPath}");
+    }
+
+    private void CopyInputImageToFolder(string stem)
+    {
+        // check if we even have an image first
+        if(string.IsNullOrEmpty(asset.imagePath) || !File.Exists(asset.imagePath))
+        {
+            Debug.LogWarning("no image to copy");
+            return;
+        }
+
+        string inputFolder = $"Assets/GenAI/{stem}/Input";
+        string fileName = Path.GetFileName(asset.imagePath);
+        string destPath = Path.Combine(inputFolder, fileName);
+        
+        // just copy it over, pretty straightforward
+        try
+        {
+            File.Copy(asset.imagePath, destPath, true);
+            AssetDatabase.ImportAsset(destPath, ImportAssetOptions.ForceUpdate);
+            Debug.Log($"copied input image to: {destPath}");
+        }
+        catch(Exception e)
+        {
+            Debug.LogError($"couldn't copy image: {e.Message}");
+        }
     }
 
     private void TryAutoIngestGlb()
@@ -311,24 +349,30 @@ public class GenAIPipelineWindow : EditorWindow
         var outAbs = ToAbsolute(asset.outDir);
         if(string.IsNullOrEmpty(outAbs) || !Directory.Exists(outAbs)) return;
 
+        // look for glb files in the output folder
         string targetName = string.IsNullOrEmpty(asset.outName) ? "output" : asset.outName;
         string[] glbs = Directory.GetFiles(outAbs, "*.glb", SearchOption.TopDirectoryOnly);
         string picked = null;
+        
+        // try to find one that matches our name
         foreach(var g in glbs)
         {
             if(Path.GetFileNameWithoutExtension(g).StartsWith(targetName, StringComparison.OrdinalIgnoreCase))
             {
-                picked = g; break;
+                picked = g; 
+                break;
             }
         }
+        // if nothing matched just grab the first one
         if(picked == null && glbs.Length > 0) picked = glbs[0];
         if(picked == null) return;
 
+        // only update if it's a different file
         if(asset.generatedGlbPath == picked) return; 
         asset.generatedGlbPath = picked;
         EditorUtility.SetDirty(asset);
 
-        // copy glb into project
+        // now copy the glb into project
         string stem = string.IsNullOrEmpty(asset.outName) ? GuessStem(asset.imagePath) + "_" + asset.mode : asset.outName;
         string destFolder = $"Assets/GenAI/{stem}/Output";
         EnsureFolder($"Assets/GenAI", stem);
@@ -338,6 +382,7 @@ public class GenAIPipelineWindow : EditorWindow
         File.Copy(picked, destAssetPath, true);
         AssetDatabase.ImportAsset(destAssetPath, ImportAssetOptions.ForceUpdate);
 
+        // make a game object with the model
         GameObject go = new GameObject(stem);
         var glbObj = AssetDatabase.LoadAssetAtPath<GameObject>(destAssetPath);
         if(glbObj != null)
@@ -345,7 +390,7 @@ public class GenAIPipelineWindow : EditorWindow
             var inst = (GameObject)PrefabUtility.InstantiatePrefab(glbObj);
             inst.transform.SetParent(go.transform, false);
         }
-        go.AddComponent<Animator>();
+        go.AddComponent<Animator>(); // might need this for animations later
 
     }
     
@@ -394,7 +439,7 @@ public class GenAIPipelineWindow : EditorWindow
     
     private void SpawnImageInScene(string imagePath)
     {
-        // delete old preview objects
+        // get rid of any old preview images first
         var oldPreviews = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None)
             .Where(go =>
                 go.name.EndsWith("_Preview") ||
@@ -408,20 +453,20 @@ public class GenAIPipelineWindow : EditorWindow
             {
                 string oldName = old.name;
                 UnityEngine.Object.DestroyImmediate(old);
-                Debug.Log($"deleted old preview: {oldName}");
+                Debug.Log($"deleted preview: {oldName}");
             }
         }
 
-        // load the image
+        // load up the image file
         byte[] fileData = File.ReadAllBytes(imagePath);
         Texture2D tex = new Texture2D(2, 2);
         if(!tex.LoadImage(fileData))
         {
-            Debug.LogError("couldn't load image: " + imagePath);
+            Debug.LogError("image load failed: " + imagePath);
             return;
         }
 
-        // make a quad plane
+        // create a quad to show the image on
         GameObject plane = GameObject.CreatePrimitive(PrimitiveType.Quad);
         plane.name = Path.GetFileNameWithoutExtension(imagePath) + "_Preview";
 
@@ -429,12 +474,12 @@ public class GenAIPipelineWindow : EditorWindow
         mat.mainTexture = tex;
         plane.GetComponent<MeshRenderer>().material = mat;
 
-        // scale based on aspect ratio
+        // scale it based on image aspect ratio
         float aspect = (float)tex.width / tex.height;
         float baseHeight = 3.5f;
         plane.transform.localScale = new Vector3(aspect * baseHeight, baseHeight, 1);
 
-        // try to find the 3d model
+        // TODO: maybe position it next to the 3d model if we find it instead of hardcoding position
         GameObject model = null;
         var allObjects = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
         foreach(var obj in allObjects)
@@ -446,18 +491,9 @@ public class GenAIPipelineWindow : EditorWindow
             }
         }
 
-        // position the image
-        if(model != null)
-        {
-            Vector3 modelPos = model.transform.position;
-            plane.transform.position = modelPos + new Vector3(-3f, 1f, 0f);  
-            Debug.Log($"spawned image beside model {model.name}");
-        }
-        else
-        {
-            plane.transform.position = new Vector3(7.2f, 4f, 0f); 
-            Debug.Log("no model found, spawned image at default spot");
-        }
+        // just put it at this position for now
+        plane.transform.position = new Vector3(5.38f, 3.51f, 5.64f);
+        Debug.Log("placed image preview in scene");
 
         Selection.activeGameObject = plane;
     }
