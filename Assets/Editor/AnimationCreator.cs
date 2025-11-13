@@ -19,3 +19,5 @@ public class AnimationCreator : EditorWindow
         // TODO: use Transform __body part__ to assign bones, then write methods adjusting position of bones
     }
 }
+
+#endif

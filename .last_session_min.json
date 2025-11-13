@@ -3,18 +3,18 @@
     "image_path": "/Users/sarahkim/Downloads/drawing1.jpg",
     "mode": "3d",
     "out_dir": "Assets/GenAI/output_3d/Output",
-    "out_name": "output_3d_dragon2"
+    "out_name": "output_3d"
   },
   "provider": {
     "name": "blackforestlabs",
-    "model": "fdsf",
-    "endpoint": "fdsf",
+    "model": null,
+    "endpoint": null,
     "api_key": null
   },
   "output": {
     "size": [
-      512,
-      512
+      1024,
+      1024
     ],
     "batch": 1
   },
