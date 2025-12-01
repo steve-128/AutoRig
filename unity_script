@@ -1,0 +1,206 @@
+using UnityEngine;
+using System.Collections.Generic;
+using System.Linq;
+using Newtonsoft.Json;
+
+public class CharacterImporter : MonoBehaviour
+{
+    [System.Serializable]
+    public class MeshData
+    {
+        public List<List<float>> vertices;
+        public List<List<int>> triangles;
+        public List<List<float>> uvs;
+        public List<BoneWeightData> boneWeights;
+    }
+
+    [System.Serializable]
+    public class BoneWeightData
+    {
+        public int boneIndex0;
+        public int boneIndex1;
+        public int boneIndex2;
+        public int boneIndex3;
+        public float weight0;
+        public float weight1;
+        public float weight2;
+        public float weight3;
+    }
+
+    [System.Serializable]
+    public class SkeletonData
+    {
+        public List<BoneData> bones;
+        public List<BindPoseData> bindPoses;
+    }
+
+    [System.Serializable]
+    public class BoneData
+    {
+        public string name;
+        public string parent;
+        public int index;
+        public Vector3Data localPosition;
+    }
+
+    [System.Serializable]
+    public class Vector3Data
+    {
+        public float x;
+        public float y;
+        public float z;
+    }
+
+    [System.Serializable]
+    public class BindPoseData
+    {
+        public float m00, m01, m02, m03;
+        public float m10, m11, m12, m13;
+        public float m20, m21, m22, m23;
+        public float m30, m31, m32, m33;
+    }
+
+    public Texture2D characterTexture;
+    public TextAsset meshDataFile;
+    public TextAsset skeletonDataFile;
+
+    void Start()
+    {
+        ImportCharacter();
+    }
+
+    void ImportCharacter()
+    {
+        // Parse JSON data
+        MeshData meshData = JsonConvert.DeserializeObject<MeshData>(meshDataFile.text);
+        SkeletonData skeletonData = JsonConvert.DeserializeObject<SkeletonData>(skeletonDataFile.text);
+
+        // Create root GameObject
+        GameObject characterRoot = new GameObject("Character");
+        characterRoot.transform.position = transform.position;
+
+        // Create bone GameObjects
+        Dictionary<string, Transform> boneTransforms = new Dictionary<string, Transform>();
+        Transform[] boneArray = new Transform[skeletonData.bones.Count];
+        
+        // First pass: create all bone objects
+        foreach (var boneData in skeletonData.bones)
+        {
+            GameObject boneObj = new GameObject(boneData.name);
+            boneObj.transform.position = new Vector3(
+                boneData.localPosition.x,
+                boneData.localPosition.y,
+                boneData.localPosition.z
+            );
+            
+            boneTransforms[boneData.name] = boneObj.transform;
+            boneArray[boneData.index] = boneObj.transform;
+        }
+        
+        // Second pass: set up hierarchy
+        foreach (var boneData in skeletonData.bones)
+        {
+            if (boneData.parent != null && boneTransforms.ContainsKey(boneData.parent))
+            {
+                boneTransforms[boneData.name].SetParent(boneTransforms[boneData.parent]);
+            }
+            else
+            {
+                boneTransforms[boneData.name].SetParent(characterRoot.transform);
+            }
+            
+            // Reset local position for proper hierarchy
+            boneTransforms[boneData.name].localPosition = Vector3.zero;
+        }
+
+        // Create mesh
+        Mesh mesh = new Mesh();
+        mesh.name = "CharacterMesh";
+        
+        // Set vertices
+        Vector3[] vertices = new Vector3[meshData.vertices.Count];
+        for (int i = 0; i < meshData.vertices.Count; i++)
+        {
+            vertices[i] = new Vector3(
+                meshData.vertices[i][0],
+                meshData.vertices[i][1],
+                0
+            );
+        }
+        mesh.vertices = vertices;
+        
+        // Set triangles
+        int[] triangles = new int[meshData.triangles.Count * 3];
+        for (int i = 0; i < meshData.triangles.Count; i++)
+        {
+            triangles[i * 3] = meshData.triangles[i][0];
+            triangles[i * 3 + 1] = meshData.triangles[i][1];
+            triangles[i * 3 + 2] = meshData.triangles[i][2];
+        }
+        mesh.triangles = triangles;
+        
+        // Set UVs
+        Vector2[] uvs = new Vector2[meshData.uvs.Count];
+        for (int i = 0; i < meshData.uvs.Count; i++)
+        {
+            uvs[i] = new Vector2(meshData.uvs[i][0], meshData.uvs[i][1]);
+        }
+        mesh.uv = uvs;
+        
+        // Set bone weights
+        BoneWeight[] boneWeights = new BoneWeight[meshData.boneWeights.Count];
+        for (int i = 0; i < meshData.boneWeights.Count; i++)
+        {
+            var bw = meshData.boneWeights[i];
+            boneWeights[i].boneIndex0 = bw.boneIndex0;
+            boneWeights[i].boneIndex1 = bw.boneIndex1;
+            boneWeights[i].boneIndex2 = bw.boneIndex2;
+            boneWeights[i].boneIndex3 = bw.boneIndex3;
+            boneWeights[i].weight0 = bw.weight0;
+            boneWeights[i].weight1 = bw.weight1;
+            boneWeights[i].weight2 = bw.weight2;
+            boneWeights[i].weight3 = bw.weight3;
+        }
+        mesh.boneWeights = boneWeights;
+        
+        // Set bind poses
+        Matrix4x4[] bindPoses = new Matrix4x4[skeletonData.bindPoses.Count];
+        for (int i = 0; i < skeletonData.bindPoses.Count; i++)
+        {
+            var bp = skeletonData.bindPoses[i];
+            bindPoses[i] = new Matrix4x4();
+            bindPoses[i].m00 = bp.m00; bindPoses[i].m01 = bp.m01; bindPoses[i].m02 = bp.m02; bindPoses[i].m03 = bp.m03;
+            bindPoses[i].m10 = bp.m10; bindPoses[i].m11 = bp.m11; bindPoses[i].m12 = bp.m12; bindPoses[i].m13 = bp.m13;
+            bindPoses[i].m20 = bp.m20; bindPoses[i].m21 = bp.m21; bindPoses[i].m22 = bp.m22; bindPoses[i].m23 = bp.m23;
+            bindPoses[i].m30 = bp.m30; bindPoses[i].m31 = bp.m31; bindPoses[i].m32 = bp.m32; bindPoses[i].m33 = bp.m33;
+        }
+        mesh.bindposes = bindPoses;
+        
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+
+        // Create SkinnedMeshRenderer
+        GameObject meshObj = new GameObject("SkinnedMesh");
+        meshObj.transform.SetParent(characterRoot.transform);
+        meshObj.transform.localPosition = Vector3.zero;
+        
+        SkinnedMeshRenderer skinnedRenderer = meshObj.AddComponent<SkinnedMeshRenderer>();
+        skinnedRenderer.sharedMesh = mesh;
+        skinnedRenderer.bones = boneArray;
+        skinnedRenderer.rootBone = boneArray[0];
+        
+        // Create and assign material
+        Material material = new Material(Shader.Find("Sprites/Default"));
+        material.mainTexture = characterTexture;
+        skinnedRenderer.material = material;
+        
+        // Set proper rendering
+        skinnedRenderer.updateWhenOffscreen = true;
+
+        Debug.Log("✓ Character imported successfully with full skinned mesh!");
+        Debug.Log($"  - {vertices.Length} vertices");
+        Debug.Log($"  - {triangles.Length / 3} triangles");
+        Debug.Log($"  - {boneArray.Length} bones");
+        Debug.Log($"  - Skinning enabled: bones will deform mesh!");
+    }
+}
