@@ -1,0 +1,234 @@
+using UnityEngine;
+using System.Collections.Generic;
+using Newtonsoft.Json;
+
+// --- MAIN IMPORTER SCRIPT ---
+public class CharacterImporter : MonoBehaviour
+{
+    [System.Serializable]
+    public class MeshData {
+        public List<List<float>> vertices;
+        public List<List<int>> triangles;
+        public List<List<float>> uvs;
+        public List<BoneWeightData> boneWeights;
+    }
+
+    [System.Serializable]
+    public class BoneWeightData {
+        public int boneIndex0, boneIndex1, boneIndex2, boneIndex3;
+        public float weight0, weight1, weight2, weight3;
+    }
+
+    [System.Serializable]
+    public class SkeletonData {
+        public List<BoneData> bones;
+        public List<BindPoseData> bindPoses;
+    }
+
+    [System.Serializable]
+    public class BoneData {
+        public string name, parent;
+        public int index;
+        public Vector3Data localPosition;
+    }
+
+    [System.Serializable]
+    public class Vector3Data { public float x, y, z; }
+
+    [System.Serializable]
+    public class BindPoseData {
+        public float m00, m01, m02, m03;
+        public float m10, m11, m12, m13;
+        public float m20, m21, m22, m23;
+        public float m30, m31, m32, m33;
+    }
+
+    public Texture2D characterTexture;
+    public TextAsset meshDataFile;
+    public TextAsset skeletonDataFile;
+    public bool addAnimator = true;
+
+    void Start() { ImportCharacter(); }
+
+    void ImportCharacter()
+    {
+        if (meshDataFile == null || skeletonDataFile == null) return;
+
+        MeshData meshData = JsonConvert.DeserializeObject<MeshData>(meshDataFile.text);
+        SkeletonData skeletonData = JsonConvert.DeserializeObject<SkeletonData>(skeletonDataFile.text);
+
+        GameObject characterRoot = new GameObject("Character");
+        characterRoot.transform.position = transform.position;
+
+        Dictionary<string, Transform> boneTransforms = new Dictionary<string, Transform>();
+        Transform[] boneArray = new Transform[skeletonData.bones.Count];
+        
+        // 1. Create Bones
+        foreach (var boneData in skeletonData.bones)
+        {
+            GameObject boneObj = new GameObject(boneData.name);
+            boneObj.transform.position = new Vector3(boneData.localPosition.x, boneData.localPosition.y, boneData.localPosition.z);
+            boneTransforms[boneData.name] = boneObj.transform;
+            boneArray[boneData.index] = boneObj.transform;
+        }
+        
+        // 2. Hierarchy
+        foreach (var boneData in skeletonData.bones)
+        {
+            if (boneData.parent != null && boneTransforms.ContainsKey(boneData.parent))
+                boneTransforms[boneData.name].SetParent(boneTransforms[boneData.parent]);
+            else
+                boneTransforms[boneData.name].SetParent(characterRoot.transform);
+            boneTransforms[boneData.name].localPosition = new Vector3(boneData.localPosition.x, boneData.localPosition.y, boneData.localPosition.z);
+        }
+
+        // 3. Mesh
+        Mesh mesh = new Mesh();
+        mesh.name = "CharacterMesh";
+        Vector3[] vertices = new Vector3[meshData.vertices.Count];
+        for (int i = 0; i < meshData.vertices.Count; i++)
+            vertices[i] = new Vector3(meshData.vertices[i][0], meshData.vertices[i][1], 0);
+        mesh.vertices = vertices;
+        
+        int[] triangles = new int[meshData.triangles.Count * 3];
+        for (int i = 0; i < meshData.triangles.Count; i++) {
+            triangles[i * 3] = meshData.triangles[i][0];
+            triangles[i * 3 + 1] = meshData.triangles[i][1];
+            triangles[i * 3 + 2] = meshData.triangles[i][2];
+        }
+        mesh.triangles = triangles;
+        
+        Vector2[] uvs = new Vector2[meshData.uvs.Count];
+        for (int i = 0; i < meshData.uvs.Count; i++)
+            uvs[i] = new Vector2(meshData.uvs[i][0], meshData.uvs[i][1]);
+        mesh.uv = uvs;
+        
+        BoneWeight[] boneWeights = new BoneWeight[meshData.boneWeights.Count];
+        for (int i = 0; i < meshData.boneWeights.Count; i++) {
+            var bw = meshData.boneWeights[i];
+            boneWeights[i].boneIndex0 = bw.boneIndex0; boneWeights[i].boneIndex1 = bw.boneIndex1;
+            boneWeights[i].boneIndex2 = bw.boneIndex2; boneWeights[i].boneIndex3 = bw.boneIndex3;
+            boneWeights[i].weight0 = bw.weight0; boneWeights[i].weight1 = bw.weight1;
+            boneWeights[i].weight2 = bw.weight2; boneWeights[i].weight3 = bw.weight3;
+        }
+        mesh.boneWeights = boneWeights;
+        
+        Matrix4x4[] bindPoses = new Matrix4x4[skeletonData.bindPoses.Count];
+        for (int i = 0; i < skeletonData.bindPoses.Count; i++) {
+            var bp = skeletonData.bindPoses[i];
+            bindPoses[i] = new Matrix4x4();
+            bindPoses[i].m00 = bp.m00; bindPoses[i].m01 = bp.m01; bindPoses[i].m02 = bp.m02; bindPoses[i].m03 = bp.m03;
+            bindPoses[i].m10 = bp.m10; bindPoses[i].m11 = bp.m11; bindPoses[i].m12 = bp.m12; bindPoses[i].m13 = bp.m13;
+            bindPoses[i].m20 = bp.m20; bindPoses[i].m21 = bp.m21; bindPoses[i].m22 = bp.m22; bindPoses[i].m23 = bp.m23;
+            bindPoses[i].m30 = bp.m30; bindPoses[i].m31 = bp.m31; bindPoses[i].m32 = bp.m32; bindPoses[i].m33 = bp.m33;
+        }
+        mesh.bindposes = bindPoses;
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+
+        GameObject meshObj = new GameObject("SkinnedMesh");
+        meshObj.transform.SetParent(characterRoot.transform);
+        meshObj.transform.localPosition = Vector3.zero;
+        SkinnedMeshRenderer skinnedRenderer = meshObj.AddComponent<SkinnedMeshRenderer>();
+        skinnedRenderer.sharedMesh = mesh;
+        skinnedRenderer.bones = boneArray;
+        skinnedRenderer.rootBone = boneArray[0];
+        
+        Material material = new Material(Shader.Find("Sprites/Default"));
+        material.mainTexture = characterTexture;
+        skinnedRenderer.material = material;
+        skinnedRenderer.updateWhenOffscreen = true;
+
+        // --- ATTACH PROCEDURAL ANIMATOR ---
+        if (addAnimator) {
+            var anim = characterRoot.AddComponent<SimpleAnimator>();
+            if(boneTransforms.ContainsKey("left_shoulder")) anim.leftArm = boneTransforms["left_shoulder"];
+            if(boneTransforms.ContainsKey("right_shoulder")) anim.rightArm = boneTransforms["right_shoulder"];
+            if(boneTransforms.ContainsKey("left_hip")) anim.leftLeg = boneTransforms["left_hip"];
+            if(boneTransforms.ContainsKey("right_hip")) anim.rightLeg = boneTransforms["right_hip"];
+            if(boneTransforms.ContainsKey("left_knee")) anim.leftKnee = boneTransforms["left_knee"];
+            if(boneTransforms.ContainsKey("right_knee")) anim.rightKnee = boneTransforms["right_knee"];
+            if(boneTransforms.ContainsKey("left_elbow")) anim.leftElbow = boneTransforms["left_elbow"];
+            if(boneTransforms.ContainsKey("right_elbow")) anim.rightElbow = boneTransforms["right_elbow"];
+        }
+        Debug.Log("✓ Character Imported with Animation capability!");
+    }
+}
+
+// --- PROCEDURAL ANIMATOR SCRIPT ---
+public class SimpleAnimator : MonoBehaviour
+{
+    public bool isWalking = true;
+    public bool isWaving = false;
+    
+    [Header("Bones")]
+    public Transform leftArm;
+    public Transform rightArm;
+    public Transform leftLeg;
+    public Transform rightLeg;
+    public Transform leftKnee;
+    public Transform rightKnee;
+    public Transform leftElbow;
+    public Transform rightElbow;
+
+    [Header("Settings")]
+    public float walkSpeed = 5.0f;
+    public float armSwingAngle = 30.0f;
+    public float legSwingAngle = 30.0f;
+    public float waveSpeed = 10.0f;
+
+    void Update()
+    {
+        if (isWalking) AnimateWalk();
+        if (isWaving) AnimateWave();
+        
+        if (!isWalking && !isWaving) ResetPose();
+    }
+
+    void AnimateWalk()
+    {
+        float time = Time.time * walkSpeed;
+        
+        // Legs (Sine wave for rotation around Z axis)
+        if(leftLeg) leftLeg.localRotation = Quaternion.Euler(0, 0, Mathf.Sin(time) * legSwingAngle);
+        if(rightLeg) rightLeg.localRotation = Quaternion.Euler(0, 0, Mathf.Sin(time + Mathf.PI) * legSwingAngle);
+        
+        // Knees (Simple bend when leg moves back)
+        if(leftKnee) {
+            float val = Mathf.Sin(time);
+            leftKnee.localRotation = Quaternion.Euler(0, 0, val > 0 ? 0 : val * 30); 
+        }
+        if(rightKnee) {
+            float val = Mathf.Sin(time + Mathf.PI);
+            rightKnee.localRotation = Quaternion.Euler(0, 0, val > 0 ? 0 : val * 30);
+        }
+
+        // Arms (Opposite to legs)
+        if(!isWaving) {
+            if(leftArm) leftArm.localRotation = Quaternion.Euler(0, 0, Mathf.Sin(time + Mathf.PI) * armSwingAngle);
+            if(rightArm) rightArm.localRotation = Quaternion.Euler(0, 0, Mathf.Sin(time) * armSwingAngle);
+        }
+    }
+
+    void AnimateWave()
+    {
+        if(rightArm) {
+            // Raise arm
+            float wave = Mathf.Sin(Time.time * waveSpeed) * 20;
+            // Base rotation: Arm up (approx 135 deg) + wave
+            rightArm.localRotation = Quaternion.Euler(0, 0, 135 + wave);
+        }
+        if(rightElbow) {
+            rightElbow.localRotation = Quaternion.Euler(0, 0, 0);
+        }
+    }
+
+    void ResetPose()
+    {
+        // Simple reset to zero rotation
+        if(leftLeg) leftLeg.localRotation = Quaternion.Lerp(leftLeg.localRotation, Quaternion.identity, Time.deltaTime * 5);
+        if(rightLeg) rightLeg.localRotation = Quaternion.Lerp(rightLeg.localRotation, Quaternion.identity, Time.deltaTime * 5);
+        if(leftArm) leftArm.localRotation = Quaternion.Lerp(leftArm.localRotation, Quaternion.identity, Time.deltaTime * 5);
+        if(rightArm) rightArm.localRotation = Quaternion.Lerp(rightArm.localRotation, Quaternion.identity, Time.deltaTime * 5);
+    }
+}
