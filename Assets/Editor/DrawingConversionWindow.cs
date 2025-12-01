@@ -145,7 +145,7 @@ public class GenAIPipelineWindow : EditorWindow
             EditorGUILayout.Space(4);
             EditorGUILayout.LabelField("Hugging Face Token:", EditorStyles.boldLabel);
             asset.apiKey = EditorGUILayout.PasswordField("HF_TOKEN", asset.apiKey ?? "");
-            
+
             if(string.IsNullOrEmpty(asset.apiKey))
             {
                 EditorGUILayout.HelpBox(
@@ -153,15 +153,6 @@ public class GenAIPipelineWindow : EditorWindow
                     "Get your token at: https://huggingface.co/settings/tokens\n" +
                     "Create a NEW token with 'read' permissions (not fine-grained).",
                     MessageType.Warning);
-            }
-            else
-            {
-                EditorGUILayout.HelpBox(
-                    "Token entered. If you get 401 errors:\n" +
-                    "• Make sure it's a valid READ token (not fine-grained)\n" +
-                    "• Copy it fresh from HuggingFace (no extra spaces)\n" +
-                    "• Try creating a brand new token",
-                    MessageType.Info);
             }
             
             EditorGUILayout.Space(4);
