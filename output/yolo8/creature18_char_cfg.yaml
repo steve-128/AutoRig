@@ -1,0 +1,108 @@
+height: 392
+width: 290
+skeleton:
+- name: root
+  loc:
+  - 145
+  - 254
+  parent: null
+- name: hip
+  loc:
+  - 145
+  - 254
+  parent: root
+- name: torso
+  loc:
+  - 145
+  - 169
+  parent: hip
+- name: neck
+  loc:
+  - 146
+  - 157
+  parent: torso
+- name: left_eye
+  loc:
+  - 154
+  - 148
+  parent: neck
+- name: right_eye
+  loc:
+  - 137
+  - 148
+  parent: neck
+- name: nose
+  loc:
+  - 146
+  - 157
+  parent: neck
+- name: face_left
+  loc:
+  - 168
+  - 146
+  parent: neck
+- name: face_right
+  loc:
+  - 126
+  - 146
+  parent: neck
+- name: left_shoulder_b
+  loc:
+  - 173
+  - 171
+  parent: torso
+- name: left_elbow_b
+  loc:
+  - 197
+  - 182
+  parent: left_shoulder_b
+- name: left_hand_b
+  loc:
+  - 242
+  - 188
+  parent: left_elbow_b
+- name: right_shoulder_b
+  loc:
+  - 116
+  - 166
+  parent: torso
+- name: right_elbow_b
+  loc:
+  - 85
+  - 171
+  parent: right_shoulder_b
+- name: right_hand_b
+  loc:
+  - 41
+  - 182
+  parent: right_elbow_b
+- name: left_hip_b
+  loc:
+  - 164
+  - 254
+  parent: root
+- name: left_knee_b
+  loc:
+  - 171
+  - 268
+  parent: left_hip_b
+- name: left_foot_b
+  loc:
+  - 174
+  - 340
+  parent: left_knee_b
+- name: right_hip_b
+  loc:
+  - 127
+  - 254
+  parent: root
+- name: right_knee_b
+  loc:
+  - 124
+  - 271
+  parent: right_hip_b
+- name: right_foot_b
+  loc:
+  - 124
+  - 351
+  parent: right_knee_b

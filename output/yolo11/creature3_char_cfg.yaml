@@ -1,0 +1,108 @@
+height: 1044
+width: 1516
+skeleton:
+- name: root
+  loc:
+  - 721
+  - 480
+  parent: null
+- name: hip
+  loc:
+  - 721
+  - 480
+  parent: root
+- name: torso
+  loc:
+  - 707
+  - 260
+  parent: hip
+- name: neck
+  loc:
+  - 760
+  - 240
+  parent: torso
+- name: left_eye
+  loc:
+  - 769
+  - 234
+  parent: neck
+- name: right_eye
+  loc:
+  - 767
+  - 222
+  parent: neck
+- name: nose
+  loc:
+  - 760
+  - 240
+  parent: neck
+- name: face_left
+  loc:
+  - 770
+  - 241
+  parent: neck
+- name: face_right
+  loc:
+  - 748
+  - 207
+  parent: neck
+- name: left_shoulder_b
+  loc:
+  - 773
+  - 269
+  parent: torso
+- name: left_elbow_b
+  loc:
+  - 920
+  - 250
+  parent: left_shoulder_b
+- name: left_hand_b
+  loc:
+  - 1044
+  - 233
+  parent: left_elbow_b
+- name: right_shoulder_b
+  loc:
+  - 641
+  - 251
+  parent: torso
+- name: right_elbow_b
+  loc:
+  - 460
+  - 263
+  parent: right_shoulder_b
+- name: right_hand_b
+  loc:
+  - 284
+  - 282
+  parent: right_elbow_b
+- name: left_hip_b
+  loc:
+  - 758
+  - 483
+  parent: root
+- name: left_knee_b
+  loc:
+  - 756
+  - 680
+  parent: left_hip_b
+- name: left_foot_b
+  loc:
+  - 769
+  - 877
+  parent: left_knee_b
+- name: right_hip_b
+  loc:
+  - 683
+  - 478
+  parent: root
+- name: right_knee_b
+  loc:
+  - 691
+  - 658
+  parent: right_hip_b
+- name: right_foot_b
+  loc:
+  - 698
+  - 816
+  parent: right_knee_b

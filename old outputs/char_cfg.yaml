@@ -1,0 +1,51 @@
+skeleton:
+- loc: [599, 612]
+  name: root
+  parent: null
+- loc: [599, 612]
+  name: hip
+  parent: root
+- loc: [599, 432]
+  name: torso
+  parent: hip
+- loc: [599, 296]
+  name: neck
+  parent: torso
+- loc: [498, 342]
+  name: right_shoulder
+  parent: torso
+- loc: [458, 477]
+  name: right_elbow
+  parent: right_shoulder
+- loc: [430, 612]
+  name: right_hand
+  parent: right_elbow
+- loc: [700, 342]
+  name: left_shoulder
+  parent: torso
+- loc: [740, 477]
+  name: left_elbow
+  parent: left_shoulder
+- loc: [768, 612]
+  name: left_hand
+  parent: left_elbow
+- loc: [543, 612]
+  name: right_hip
+  parent: root
+- loc: [532, 793]
+  name: right_knee
+  parent: right_hip
+- loc: [526, 974]
+  name: right_foot
+  parent: right_knee
+- loc: [655, 612]
+  name: left_hip
+  parent: root
+- loc: [666, 793]
+  name: left_knee
+  parent: left_hip
+- loc: [672, 974]
+  name: left_foot
+  parent: left_knee
+height: 1200
+width: 1200

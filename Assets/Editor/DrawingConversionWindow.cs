@@ -133,6 +133,26 @@ public class GenAIPipelineWindow : EditorWindow
             }
         }
     }
+    private void CleanupPreviousJobObjects()
+    {
+        // Kill old preview quads and previously spawned characters
+        var all = UnityEngine.Object.FindObjectsOfType<GameObject>();
+
+        foreach (var go in all)
+        {
+            if (go == null) continue;
+
+            string n = go.name;
+
+            if (n.EndsWith("_RefinedPreview") ||
+                n.EndsWith("_InputPreview")   ||
+                n.EndsWith("_Character"))     // your 3D character roots
+            {
+                DestroyImmediate(go);
+            }
+        }
+    }
+
 
     private void DrawRunSection()
     {
@@ -145,7 +165,7 @@ public class GenAIPipelineWindow : EditorWindow
             EditorGUILayout.Space(4);
             EditorGUILayout.LabelField("Hugging Face Token:", EditorStyles.boldLabel);
             asset.apiKey = EditorGUILayout.PasswordField("HF_TOKEN", asset.apiKey ?? "");
-            
+
             if(string.IsNullOrEmpty(asset.apiKey))
             {
                 EditorGUILayout.HelpBox(
@@ -153,15 +173,6 @@ public class GenAIPipelineWindow : EditorWindow
                     "Get your token at: https://huggingface.co/settings/tokens\n" +
                     "Create a NEW token with 'read' permissions (not fine-grained).",
                     MessageType.Warning);
-            }
-            else
-            {
-                EditorGUILayout.HelpBox(
-                    "Token entered. If you get 401 errors:\n" +
-                    "• Make sure it's a valid READ token (not fine-grained)\n" +
-                    "• Copy it fresh from HuggingFace (no extra spaces)\n" +
-                    "• Try creating a brand new token",
-                    MessageType.Info);
             }
             
             EditorGUILayout.Space(4);
@@ -274,6 +285,48 @@ public class GenAIPipelineWindow : EditorWindow
 
     private void SpawnOutputImage(string jobRoot, string jobName)
     {
+        CleanupPreviousJobObjects();
+        // ========== TRY 3D IMPORT FIRST ==========
+        string meshDataPath = Path.Combine(jobRoot, "Output", "mesh_data.json");
+        string skeletonDataPath = Path.Combine(jobRoot, "Output", "skeleton_data.json");
+        
+        Debug.Log($"Checking for 3D data...");
+        Debug.Log($"Mesh path: {meshDataPath}");
+        Debug.Log($"Skeleton path: {skeletonDataPath}");
+        Debug.Log($"Mesh exists: {File.Exists(meshDataPath)}");
+        Debug.Log($"Skeleton exists: {File.Exists(skeletonDataPath)}");
+        
+        if (File.Exists(meshDataPath) && File.Exists(skeletonDataPath))
+        {
+            Debug.Log("✅ 3D mesh data found, importing character...");
+            GameObject character = MeshImporter.ImportCharacter(jobRoot, jobName);
+            
+            if (character != null)
+            {
+                Camera sceneCamera = Camera.main;
+                if (sceneCamera != null)
+                {
+                    character.transform.position = sceneCamera.transform.position + sceneCamera.transform.forward * 5f;
+                    character.transform.rotation = Quaternion.Euler(0, 180, 0);
+                }
+                
+                Selection.activeGameObject = character;
+                SceneView.lastActiveSceneView?.FrameSelected();
+                
+                Debug.Log($"✅ Successfully spawned 3D character: {jobName}");
+                return;
+            }
+        }
+        else
+        {
+            Debug.Log("❌ No 3D data, showing 2D preview");
+        }
+        
+        // ... rest of 2D code ...
+        // ========== END NEW CODE ==========
+        
+        // ========== EXISTING 2D FALLBACK CODE BELOW (keep everything as-is) ==========
+        
         // look for output file
         string outputFolder = Path.Combine(jobRoot, "Output");
         string[] possibleFiles = new string[]
@@ -375,9 +428,21 @@ public class GenAIPipelineWindow : EditorWindow
         GameObject outputQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
         outputQuad.name = jobName + "_RefinedPreview";
 
-        Material outputMat = new Material(Shader.Find("Unlit/Texture"));
-        outputMat.mainTexture = outputTex;
-        outputQuad.GetComponent<MeshRenderer>().material = outputMat;
+        // URP-friendly shader for 2D quad
+        Shader outShader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (outShader == null)
+            outShader = Shader.Find("Universal Render Pipeline/Lit");
+        if (outShader == null)
+            outShader = Shader.Find("Sprites/Default");
+
+        Material outputMat = new Material(outShader);
+        if (outputMat.HasProperty("_BaseMap"))
+            outputMat.SetTexture("_BaseMap", outputTex);
+        else
+            outputMat.mainTexture = outputTex;
+
+        outputQuad.GetComponent<MeshRenderer>().sharedMaterial = outputMat;
+
 
         Camera mainCam = Camera.main;
         if(mainCam != null)
@@ -396,9 +461,19 @@ public class GenAIPipelineWindow : EditorWindow
                 GameObject inputQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
                 inputQuad.name = jobName + "_InputPreview";
 
-                Material inputMat = new Material(Shader.Find("Unlit/Texture"));
-                inputMat.mainTexture = inputTex;
-                inputQuad.GetComponent<MeshRenderer>().material = inputMat;
+                Shader inShader = Shader.Find("Universal Render Pipeline/Unlit");
+                if (inShader == null)
+                    inShader = Shader.Find("Universal Render Pipeline/Lit");
+                if (inShader == null)
+                    inShader = Shader.Find("Sprites/Default");
+
+                Material inputMat = new Material(inShader);
+                if (inputMat.HasProperty("_BaseMap"))
+                    inputMat.SetTexture("_BaseMap", inputTex);
+                else
+                    inputMat.mainTexture = inputTex;
+
+                inputQuad.GetComponent<MeshRenderer>().sharedMaterial = inputMat;
 
                 float inputAspect = (float)inputTex.width / inputTex.height;
                 float inputWidth = width * 0.2f;
@@ -594,6 +669,11 @@ public class GenAIPipelineWindow : EditorWindow
                     {
                         runnerStatus = "Pipeline completed!";
                         Debug.Log($"qwen pipeline finished for {jobCopy}");
+                        
+                        // *** NEW: Force Unity to refresh assets before spawning ***
+                        AssetDatabase.Refresh();
+                        System.Threading.Thread.Sleep(1000); // Wait 1 more second
+                        
                         SpawnOutputImage(rootCopy, jobCopy);
                     }
                     else

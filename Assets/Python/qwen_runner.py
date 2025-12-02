@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # qwen_runner.py
-# Image -> VLM text -> Qwen image edit -> FLUX refine
+# Image -> VLM text -> Qwen image edit -> FLUX refine -> 3D Rigging
 # intermediates go to Working folder, final output to Output
 
-import os, sys, json, argparse, base64, mimetypes, time, traceback
+import os, sys, json, argparse, base64, mimetypes, time, traceback, subprocess
 from pathlib import Path
 
 def ensure_min_resolution(image_path: Path, min_size: int = 512) -> Path:
@@ -12,14 +12,13 @@ def ensure_min_resolution(image_path: Path, min_size: int = 512) -> Path:
     If not, upscale it and save to Working folder.
     Returns path to the (possibly upscaled) image.
     """
+    from PIL import Image
     img = Image.open(image_path)
     width, height = img.size
     
-    # if image is already big enough, just return original
     if width >= min_size and height >= min_size:
         return image_path
     
-    # scale factor
     scale = max(min_size / width, min_size / height)
     new_width = int(width * scale)
     new_height = int(height * scale)
@@ -27,8 +26,6 @@ def ensure_min_resolution(image_path: Path, min_size: int = 512) -> Path:
     print(f"image too small ({width}x{height}), upscaling to {new_width}x{new_height}")
     
     upscaled = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-    
-    # save to working folder
     working_path = image_path.parent.parent / "Working" / "upscaled_input.png"
     upscaled.save(working_path)
     
@@ -38,11 +35,9 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 GROQ_KEY = os.getenv("GROQ_API_KEY")
 FAL_KEY  = os.getenv("FAL_KEY")
 
-
 from huggingface_hub import InferenceClient
 from PIL import Image
 import io
-
 
 def ensure_dirs(root: Path):
     (root / "Input").mkdir(parents=True, exist_ok=True)
@@ -81,8 +76,6 @@ def save_pil_to(path: Path, pil_image: Image.Image):
 def bytes_to_pil(b: bytes) -> Image.Image:
     return Image.open(io.BytesIO(b)).convert("RGBA")
 
-
-# VLM prompt for creature identification
 VLM_PROMPT = (
     "Identify the creature in the drawing and describe its prominent features in a single, "
     "detailed but concise sentence with less than 20 words. "
@@ -91,7 +84,6 @@ VLM_PROMPT = (
     "Start the feature sentence directly with the first descriptive feature, omitting any introductory phrases."
 )
 
-# Qwen/FLUX prompt template
 QWEN_PROMPT = (
    "Based on the drawing of a {creature} with {features}, "
    "isolate it and remove all background clutter while preserving ALL visual elements of the creature including fire, flames, wings, tails, and any other distinctive features. "
@@ -105,9 +97,7 @@ QWEN_PROMPT = (
 
 FLUX_PROMPT = QWEN_PROMPT
 
-
 def step_vlm_caption(root: Path, image_path: Path) -> str:
-    # run Llama VLM via HuggingFace + Groq
     write_status(root, "vlm", 0.1, "captioning")
     write_log(root, "VLM: starting")
 
@@ -116,7 +106,6 @@ def step_vlm_caption(root: Path, image_path: Path) -> str:
         die(root, "Missing HF_TOKEN environment variable")
 
     client = InferenceClient(provider="groq", api_key=hf_token)
-
     data_url = to_data_url(image_path)
     messages = [{
         "role": "user",
@@ -133,7 +122,6 @@ def step_vlm_caption(root: Path, image_path: Path) -> str:
             model=model_name,
             messages=messages,
         )
-        # extract text content from response
         text = None
         if hasattr(completion, "choices"):
             text = completion.choices[0].message.content
@@ -147,13 +135,10 @@ def step_vlm_caption(root: Path, image_path: Path) -> str:
     write_status(root, "vlm", 0.35, "caption ok")
     return text
 
-
 def step_parse_caption(root: Path, caption: str):
-    # parse "Creature | features" format
     write_status(root, "parse", 0.4, "parsing caption")
     parts = [p.strip() for p in caption.split("|", 1)]
     if len(parts) != 2:
-        # try alternate delimiters
         if ":" in caption:
             parts = [p.strip() for p in caption.split(":", 1)]
         elif "-" in caption:
@@ -167,9 +152,7 @@ def step_parse_caption(root: Path, caption: str):
     write_log(root, f"Parsed -> creature='{creature}' features='{features}'")
     return creature, features
 
-
 def step_qwen_edit(root: Path, image_path: Path, creature: str, features: str) -> Image.Image:
-    # Qwen image edit pass
     write_status(root, "qwen", 0.55, "qwen image edit")
     hf_token = os.environ.get("HF_TOKEN")
     if not hf_token:
@@ -190,13 +173,11 @@ def step_qwen_edit(root: Path, image_path: Path, creature: str, features: str) -
                 "extra elements, noisy, distorted, poorly rendered"
             ),
             model="Qwen/Qwen-Image-Edit",
-            seed=12345,                   # deterministic output
-            guidance_scale=9,             # stronger adherence to prompt
-            strength=0.92,                # how much it overwrites input pose
+            seed=12345,
+            guidance_scale=9,
+            strength=0.92,
         )
 
-
-        # handle different return types from provider
         if isinstance(out, Image.Image):
             img = out
         elif isinstance(out, (bytes, bytearray)):
@@ -213,9 +194,7 @@ def step_qwen_edit(root: Path, image_path: Path, creature: str, features: str) -
     write_status(root, "qwen", 0.75, "qwen ok")
     return img
 
-
 def step_flux_refine(root: Path, qwen_img: Image.Image, creature: str, features: str) -> Image.Image:
-    # FLUX refinement pass
     write_status(root, "flux", 0.8, "flux refine")
     hf_token = os.environ.get("HF_TOKEN")
     if not hf_token:
@@ -224,7 +203,6 @@ def step_flux_refine(root: Path, qwen_img: Image.Image, creature: str, features:
     client = InferenceClient(provider="fal-ai", api_key=hf_token)
     prompt = FLUX_PROMPT.format(creature=creature, features=features)
 
-    # convert PIL to bytes for API input
     buf = io.BytesIO()
     qwen_img.save(buf, format="PNG")
     png_bytes = buf.getvalue()
@@ -238,10 +216,10 @@ def step_flux_refine(root: Path, qwen_img: Image.Image, creature: str, features:
                 "extra elements, noisy, distorted, poorly rendered"
             ),
             model="black-forest-labs/FLUX.1-Kontext-dev",
-            seed=12345,                   # match Qwen seed
-            guidance_scale=10,            # follow T-pose instruction aggressively
-            strength=0.98,                
-            num_inference_steps=40        
+            seed=12345,
+            guidance_scale=10,
+            strength=0.98,
+            num_inference_steps=40
         )
         if isinstance(out, Image.Image):
             img = out
@@ -259,6 +237,89 @@ def step_flux_refine(root: Path, qwen_img: Image.Image, creature: str, features:
     write_status(root, "flux", 0.95, "flux ok")
     return img
 
+def step_3d_rigging(root: Path, refined_image: Path, job: str):
+    """
+    NEW: Call hybrid_rigger.py to generate 3D mesh, skeleton, and GLB
+    """
+    write_status(root, "rigging", 0.96, "generating 3D mesh")
+    write_log(root, "3D Rigging: starting hybrid_rigger.py")
+    
+    # Find hybrid_rigger.py
+    rigger_script = None
+    possible_paths = [
+        Path("Assets/Python/hybrid_rigger.py"),
+        Path("Python/hybrid_rigger.py"),
+        Path("hybrid_rigger.py"),
+    ]
+    
+    for path in possible_paths:
+        if path.exists():
+            rigger_script = path
+            break
+    
+    if rigger_script is None:
+        write_log(root, "WARNING: hybrid_rigger.py not found, skipping 3D rigging")
+        write_status(root, "rigging", 0.98, "skipped (rigger not found)")
+        return
+    
+    # *** CHANGED: Create temp file with job name ***
+    temp_image = root / "Working" / f"{job}.png"
+    import shutil
+    shutil.copy(refined_image, temp_image)
+    
+    # Prepare output directory
+    rigger_output = root / "Working" / "rigger_temp"
+    rigger_output.mkdir(parents=True, exist_ok=True)
+    
+    # Find Python executable
+    python_path = sys.executable
+    if not python_path:
+        python_path = "python3"
+    
+    # Build command
+    cmd = [
+        python_path,
+        str(rigger_script),
+        "--input", str(temp_image),
+        "--output", str(rigger_output),
+        "--falloff", "40.0"
+    ]
+    
+    try:
+        write_log(root, f"Running: {' '.join(cmd)}")
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        if result.returncode == 0:
+            write_log(root, "3D Rigging completed successfully")
+            write_log(root, result.stdout)
+            
+            # *** CHANGED: Copy outputs to main Output folder ***
+            source_folder = rigger_output / job
+            if source_folder.exists():
+                for file in source_folder.glob("*"):
+                    if file.name in ["mesh_data.json", "skeleton_data.json", "character.glb", 
+                                   "character_tex.png", "joint_overlay.png", "mask.png"]:
+                        dest = root / "Output" / file.name
+                        shutil.copy(file, dest)
+                        write_log(root, f"Copied {file.name} to Output/")
+            
+            write_status(root, "rigging", 0.98, "3D rigging complete")
+        else:
+            write_log(root, f"WARNING: hybrid_rigger.py failed with code {result.returncode}")
+            write_log(root, result.stderr)
+            write_status(root, "rigging", 0.98, "rigging failed (continuing)")
+            
+    except subprocess.TimeoutExpired:
+        write_log(root, "WARNING: hybrid_rigger.py timed out")
+        write_status(root, "rigging", 0.98, "rigging timeout (continuing)")
+    except Exception as e:
+        write_log(root, f"WARNING: hybrid_rigger.py exception: {e}")
+        write_status(root, "rigging", 0.98, "rigging error (continuing)")
 
 def main():
     ap = argparse.ArgumentParser()
@@ -281,21 +342,21 @@ def main():
         
         image_path = ensure_min_resolution(image_path, min_size=512)
 
-        # pipeline execution
+        # Pipeline execution
         caption = step_vlm_caption(root, image_path)
         creature, features = step_parse_caption(root, caption)
         qwen_img = step_qwen_edit(root, image_path, creature, features)
         flux_img = step_flux_refine(root, qwen_img, creature, features)
 
-        # save final outputs
+        # Save final 2D outputs
         out_png = root / "Output" / f"{job}_refined.png"
         save_pil_to(out_png, flux_img)
 
-        # TODO: add 3D reconstructor, output glb
-        # (root / "Output" / f"{job}_model.glb").write_bytes(...)
+        # NEW: 3D Rigging step
+        step_3d_rigging(root, out_png, job)
 
         # Unity import metadata
-        meta = {"scale": 1.0, "pivot": [0, 0, 0], "upAxis": "Y", "rig": "none"}
+        meta = {"scale": 1.0, "pivot": [0, 0, 0], "upAxis": "Y", "rig": "humanoid"}
         (root / "Output" / "meta.json").write_text(json.dumps(meta))
 
         write_status(root, "done", 1.0, "ok")
@@ -306,7 +367,6 @@ def main():
     except Exception as e:
         tb = traceback.format_exc()
         die(root, f"Unhandled exception: {e}\n{tb}", code=2)
-
 
 if __name__ == "__main__":
     main()
