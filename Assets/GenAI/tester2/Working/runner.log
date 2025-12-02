@@ -1,0 +1,31 @@
+Runner started
+VLM: starting
+VLM caption: Person | Large head with short hair, smiling face, and long, dark neck.
+Parsed -> creature='Person' features='Large head with short hair, smiling face, and long, dark neck.'
+Qwen output saved to Working/qwen.png
+FLUX output saved to Working/flux.png
+3D Rigging: starting hybrid_rigger.py
+Running: /opt/anaconda3/bin/python3 Assets/Python/hybrid_rigger.py --input /Users/sarahkim/GenAi x Netflix/Assets/GenAI/tester2/Working/tester2.png --output /Users/sarahkim/GenAi x Netflix/Assets/GenAI/tester2/Working/rigger_temp --falloff 40.0
+3D Rigging completed successfully
+
+🔹 Processing: tester2.png
+✅ Saved mask: /Users/sarahkim/GenAi x Netflix/Assets/GenAI/tester2/Working/rigger_temp/tester2/mask.png
+✅ Saved original image: /Users/sarahkim/GenAi x Netflix/Assets/GenAI/tester2/Working/rigger_temp/tester2/original_image.png
+✅ Saved glTF: /Users/sarahkim/GenAi x Netflix/Assets/GenAI/tester2/Working/rigger_temp/tester2/character.glb
+✅ Saved texture PNG: /Users/sarahkim/GenAi x Netflix/Assets/GenAI/tester2/Working/rigger_temp/tester2/character_tex.png
+Saving Unity JSON files...
+✅ Saved MeshData JSON: /Users/sarahkim/GenAi x Netflix/Assets/GenAI/tester2/Working/rigger_temp/tester2/mesh_data.json
+✅ Saved SkeletonData JSON: /Users/sarahkim/GenAi x Netflix/Assets/GenAI/tester2/Working/rigger_temp/tester2/skeleton_data.json
+✅ Saved overlay: /Users/sarahkim/GenAi x Netflix/Assets/GenAI/tester2/Working/rigger_temp/tester2/joint_overlay.png
+✅ Saved YAML: /Users/sarahkim/GenAi x Netflix/Assets/GenAI/tester2/Working/rigger_temp/tester2/char_cfg.yaml
+--- Successfully processed /Users/sarahkim/GenAi x Netflix/Assets/GenAI/tester2/Working/tester2.png ---
+Vertices: 6839, Triangles: 13640, Bones: 21
+
+✅ All done! Results saved in: /Users/sarahkim/GenAi x Netflix/Assets/GenAI/tester2/Working/rigger_temp
+Copied character.glb to Output/
+Copied character_tex.png to Output/
+Copied skeleton_data.json to Output/
+Copied mesh_data.json to Output/
+Copied joint_overlay.png to Output/
+Copied mask.png to Output/
+Runner finished successfully
