@@ -421,7 +421,7 @@ def run_pipeline(image_path):
     print(f"[INFO] ✓ Saved keypoints visualization to {keypoints_path}")
     
     #########################################
-    # Save YAML
+    # Save YAML 
     #########################################
     yaml_path = os.path.join(output_folder, "04_pose.yaml")
     save_yaml(final_kpts, yaml_path)
@@ -459,13 +459,13 @@ if __name__ == "__main__":
     
     # Check if file exists
     if not os.path.exists(image_path):
-        print(f"\n[ERROR] Image file not found: {image_path}")
+        print(f"\nERROR Image file not found: {image_path}")
         print("Please check the path and try again.\n")
         sys.exit(1)
     
     # Run the pipeline
     run_pipeline(image_path)
-
+    
     # Usage:
     # WITH FACE REFINEMENT
     #   python3 simplebaseline_pipeline.py data/creature16.png
