@@ -1,0 +1,52 @@
+joints:
+  left_ankle:
+  - 415
+  - 833
+  left_ear:
+  - 211
+  - 321
+  left_elbow:
+  - 215
+  - 431
+  left_eye:
+  - 408
+  - 205
+  left_hip:
+  - 415
+  - 595
+  left_knee:
+  - 444
+  - 535
+  left_shoulder:
+  - 272
+  - 357
+  left_wrist:
+  - 157
+  - 520
+  nose:
+  - 403
+  - 220
+  right_ankle:
+  - 301
+  - 847
+  right_ear:
+  - 286
+  - 244
+  right_elbow:
+  - 501
+  - 431
+  right_eye:
+  - 302
+  - 249
+  right_hip:
+  - 286
+  - 595
+  right_knee:
+  - 286
+  - 639
+  right_shoulder:
+  - 415
+  - 357
+  right_wrist:
+  - 559
+  - 520
