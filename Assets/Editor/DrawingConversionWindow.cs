@@ -19,6 +19,7 @@ public class GenAIPipelineWindow : EditorWindow
     private System.Text.StringBuilder standardOutput = new System.Text.StringBuilder();
     
     public string qwenRunnerPath = "Assets/Python/qwen_runner.py";
+    public string newRiggerPath = "Assets/Python/new_rigger.py";
 
     [MenuItem("GenAI@Berkeley/Netflix Pipeline")]
     public static void Open()
@@ -201,7 +202,90 @@ public class GenAIPipelineWindow : EditorWindow
             EditorGUILayout.HelpBox("This will execute qwen_runner.py with the saved image and metadata.", MessageType.Info);
         }
     }
+    private void RunNewRigger(string rootPath, string jobName)
+    {
+        try
+        {
+            string outputFolder = Path.Combine(rootPath, "Output");
+            string inputFolder = Path.Combine(rootPath, "Input");
 
+            // Find input image
+            string inputImage = null;
+            if (Directory.Exists(inputFolder))
+            {
+                var images = Directory.GetFiles(inputFolder, "*.png")
+                    .Concat(Directory.GetFiles(inputFolder, "*.jpg"))
+                    .Concat(Directory.GetFiles(inputFolder, "*.jpeg"))
+                    .ToArray();
+                if (images.Length > 0)
+                    inputImage = images[0];
+            }
+
+            if (string.IsNullOrEmpty(inputImage) || !File.Exists(inputImage))
+            {
+                Debug.LogWarning($"[NewRigger] No input image found for {jobName}, skipping.");
+                return;
+            }
+
+            // Path to the new script
+            string scriptPath = "Assets/Python/mesh_generator_v2_modified.py";
+            if (!File.Exists(scriptPath))
+            {
+                Debug.LogWarning($"[NewRigger] Script not found at: {scriptPath}");
+                return;
+            }
+
+            string pythonPath = "/opt/anaconda3/bin/python3";
+            if (!File.Exists(pythonPath))
+            {
+                pythonPath = "python3";
+            }
+
+            // Build command
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = pythonPath,
+                Arguments = $"-u \"{scriptPath}\" --input \"{inputImage}\" --output \"{outputFolder}\" --falloff 40.0",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                WorkingDirectory = Directory.GetParent(Application.dataPath).FullName
+            };
+
+            psi.EnvironmentVariables["PYTHONUNBUFFERED"] = "1";
+
+            Debug.Log($"[NewRigger] Running mesh generator for {jobName}");
+
+            using (var proc = System.Diagnostics.Process.Start(psi))
+            {
+                if (proc == null)
+                {
+                    Debug.LogError("[NewRigger] Failed to start mesh generator");
+                    return;
+                }
+
+                string stdout = proc.StandardOutput.ReadToEnd();
+                string stderr = proc.StandardError.ReadToEnd();
+                proc.WaitForExit();
+
+                if (!string.IsNullOrEmpty(stdout))
+                    Debug.Log("[NewRigger stdout]\n" + stdout);
+
+                if (!string.IsNullOrEmpty(stderr))
+                    Debug.LogWarning("[NewRigger stderr]\n" + stderr);
+
+                if (proc.ExitCode == 0)
+                    Debug.Log($"[NewRigger] Mesh generation completed for {jobName}");
+                else
+                    Debug.LogError($"[NewRigger] Mesh generation failed with exit code {proc.ExitCode}");
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[NewRigger] Exception: {e.Message}");
+        }
+    }
     private void DrawStatusSection()
     {
         Header("Pipeline Status");
@@ -298,7 +382,7 @@ public class GenAIPipelineWindow : EditorWindow
         
         if (File.Exists(meshDataPath) && File.Exists(skeletonDataPath))
         {
-            Debug.Log("✅ 3D mesh data found, importing character...");
+            Debug.Log("3D mesh data found, importing character...");
             GameObject character = MeshImporter.ImportCharacter(jobRoot, jobName);
             
             if (character != null)
@@ -309,6 +393,7 @@ public class GenAIPipelineWindow : EditorWindow
                     character.transform.position = sceneCamera.transform.position + sceneCamera.transform.forward * 5f;
                     character.transform.rotation = Quaternion.Euler(0, 180, 0);
                 }
+                character.transform.localScale = character.transform.localScale * 2.0f;
                 
                 Selection.activeGameObject = character;
                 SceneView.lastActiveSceneView?.FrameSelected();
@@ -319,15 +404,10 @@ public class GenAIPipelineWindow : EditorWindow
         }
         else
         {
-            Debug.Log("❌ No 3D data, showing 2D preview");
+            Debug.Log("No 3D data, showing 2D preview");
         }
         
-        // ... rest of 2D code ...
-        // ========== END NEW CODE ==========
-        
-        // ========== EXISTING 2D FALLBACK CODE BELOW (keep everything as-is) ==========
-        
-        // look for output file
+
         string outputFolder = Path.Combine(jobRoot, "Output");
         string[] possibleFiles = new string[]
         {
@@ -451,7 +531,7 @@ public class GenAIPipelineWindow : EditorWindow
             float height = 2f * distance * Mathf.Tan(mainCam.fieldOfView * 0.5f * Mathf.Deg2Rad);
             float width = height * mainCam.aspect;
 
-            outputQuad.transform.localScale = new Vector3(width, height, 1f);
+            outputQuad.transform.localScale = new Vector3(width, height, 2f);
             outputQuad.transform.position = mainCam.transform.position + mainCam.transform.forward * distance;
             outputQuad.transform.rotation = mainCam.transform.rotation;
 
@@ -669,12 +749,14 @@ public class GenAIPipelineWindow : EditorWindow
                     {
                         runnerStatus = "Pipeline completed!";
                         Debug.Log($"qwen pipeline finished for {jobCopy}");
-                        
-                        // *** NEW: Force Unity to refresh assets before spawning ***
                         AssetDatabase.Refresh();
                         System.Threading.Thread.Sleep(1000); // Wait 1 more second
                         
-                        SpawnOutputImage(rootCopy, jobCopy);
+                        RunNewRigger(rootCopy, jobCopy);           // NEW  
+                        AssetDatabase.Refresh();
+                        System.Threading.Thread.Sleep(1000);
+                        SpawnOutputImage(rootCopy, jobCopy);       // SAME
+
                     }
                     else
                     {
