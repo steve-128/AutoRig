@@ -447,10 +447,10 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("\n[ERROR] No image path provided!")
         print("\nUsage:")
-        print(f"  python3 {sys.argv[0]} <image_path>")
+        print(f"  python {sys.argv[0]} <image_path>")
         print("\nExample:")
-        print(f"  python3 {sys.argv[0]} data/creature15.png")
-        print(f"  python3 {sys.argv[0]} data/creature21.png")
+        print(f"  python {sys.argv[0]} data/creature15.png")
+        print(f"  python {sys.argv[0]} data/creature21.png")
         print()
         sys.exit(1)
     
@@ -468,6 +468,6 @@ if __name__ == "__main__":
     
     # Usage:
     # WITH FACE REFINEMENT
-    #   python3 simplebaseline_pipeline.py data/creature16.png
+    #   python simplebaseline_pipeline.py data/creature16.png
     # WITHOUT:
-    #   python3 simplebaseline_pipeline.py data/creature16.png --no-face-refine 
+    #   python simplebaseline_pipeline.py data/creature16.png --no-face-refine 

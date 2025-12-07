@@ -5,6 +5,16 @@
 
 import os, sys, json, argparse, base64, mimetypes, time, traceback, subprocess
 from pathlib import Path
+from huggingface_hub import InferenceClient
+from PIL import Image
+import io
+
+print("=== PYTHON INFO FROM UNITY ===")
+print("Executable :", sys.executable)
+print("Version    :", sys.version)
+print("VIRTUAL_ENV:", os.environ.get("VIRTUAL_ENV"))
+print("CONDA_DEFAULT_ENV:", os.environ.get("CONDA_DEFAULT_ENV"))
+print("================================")
 
 def ensure_min_resolution(image_path: Path, min_size: int = 512) -> Path:
     """
@@ -34,10 +44,6 @@ def ensure_min_resolution(image_path: Path, min_size: int = 512) -> Path:
 HF_TOKEN = os.getenv("HF_TOKEN")
 GROQ_KEY = os.getenv("GROQ_API_KEY")
 FAL_KEY  = os.getenv("FAL_KEY")
-
-from huggingface_hub import InferenceClient
-from PIL import Image
-import io
 
 def ensure_dirs(root: Path):
     (root / "Input").mkdir(parents=True, exist_ok=True)

@@ -18,6 +18,8 @@ public class GenAIPipelineWindow : EditorWindow
     private System.Text.StringBuilder errorOutput = new System.Text.StringBuilder();
     private System.Text.StringBuilder standardOutput = new System.Text.StringBuilder();
     
+    const string condaEnvName = "netflix_f25";
+
     public string qwenRunnerPath = "Assets/Python/qwen_runner.py";
     public string newRiggerPath = "Assets/Python/new_rigger.py";
 
@@ -202,6 +204,7 @@ public class GenAIPipelineWindow : EditorWindow
             EditorGUILayout.HelpBox("This will execute qwen_runner.py with the saved image and metadata.", MessageType.Info);
         }
     }
+
     private void RunNewRigger(string rootPath, string jobName)
     {
         try
@@ -235,17 +238,36 @@ public class GenAIPipelineWindow : EditorWindow
                 return;
             }
 
-            string pythonPath = "/opt/anaconda3/bin/python3";
-            if (!File.Exists(pythonPath))
+            string fileName;
+            string arguments;
+
+            if (Application.platform == RuntimePlatform.WindowsEditor)
             {
-                pythonPath = "python3";
+                // Use cmd.exe on Windows
+                fileName  = "cmd.exe";
+                arguments =
+                    $"/C conda run -n {condaEnvName} python -u \"{newRiggerPath}\" " +
+                    $"-u \"{scriptPath}\" --input \"{inputImage}\" --output \"{outputFolder}\" --falloff 40.0";
+            }
+            else if (Application.platform == RuntimePlatform.OSXEditor)
+            {
+                // Use bash -lc on macOS so it loads conda from your shell init
+                fileName  = "/bin/bash";
+                arguments =
+                    $"-lc \"conda run -n {condaEnvName} python -u '{newRiggerPath}' " +
+                    $"-u \"{scriptPath}\" --input \"{inputImage}\" --output \"{outputFolder}\" --falloff 40.0";
+            }
+            else
+            {
+                Debug.LogError("Qwen pipeline: unsupported platform.");
+                return;
             }
 
             // Build command
             var psi = new System.Diagnostics.ProcessStartInfo
             {
-                FileName = pythonPath,
-                Arguments = $"-u \"{scriptPath}\" --input \"{inputImage}\" --output \"{outputFolder}\" --falloff 40.0",
+                FileName = fileName,
+                Arguments = arguments,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -662,14 +684,6 @@ public class GenAIPipelineWindow : EditorWindow
             EditorUtility.DisplayDialog("Error", "Image not found in Input folder. Please save first.", "OK");
             return;
         }
-
-        string pythonPath = "/opt/anaconda3/bin/python3";
-        
-        if(!File.Exists(pythonPath))
-        {
-            Debug.LogWarning($"python not found at {pythonPath}, trying system python3");
-            pythonPath = "python3";
-        }
         
         errorOutput.Clear();
         standardOutput.Clear();
@@ -677,10 +691,35 @@ public class GenAIPipelineWindow : EditorWindow
         string absRoot = Path.GetFullPath(rootPath);
         string absImage = Path.GetFullPath(imagePath);
 
+        string fileName;
+        string arguments;
+
+        if (Application.platform == RuntimePlatform.WindowsEditor)
+        {
+            // Use cmd.exe on Windows
+            fileName  = "cmd.exe";
+            arguments =
+                $"/C conda run -n {condaEnvName} python -u \"{qwenRunnerPath}\" " +
+                $"--root \"{absRoot}\" --image \"{absImage}\" --job \"{jobName}\"";
+        }
+        else if (Application.platform == RuntimePlatform.OSXEditor)
+        {
+            // Use bash -lc on macOS so it loads conda from your shell init
+            fileName  = "/bin/bash";
+            arguments =
+                $"-lc \"conda run -n {condaEnvName} python -u '{qwenRunnerPath}' " +
+                $"--root '{absRoot}' --image '{absImage}' --job '{jobName}'\"";
+        }
+        else
+        {
+            Debug.LogError("Qwen pipeline: unsupported platform.");
+            return;
+        }
+
         var psi = new System.Diagnostics.ProcessStartInfo
         {
-            FileName = pythonPath,
-            Arguments = $"-u \"{qwenRunnerPath}\" --root \"{absRoot}\" --image \"{absImage}\" --job \"{jobName}\"",
+            FileName = fileName,
+            Arguments = arguments,
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
