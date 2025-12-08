@@ -34,5 +34,6 @@ pip install pygltflib
 ## 4. Download Pretrained Pose Estimation Weights
 1. Open this Google Drive folder in your browser: https://drive.google.com/drive/folders/1fGLeCgTbaO50wylfV_j1OFTEx8DDpaqh
 2. Download the file: pose_resnet_50_256x192.pth.tar
-3. Save the file in the Assets/Scripts/pretrained_weights folder 
+3. Create a folder called pretrained_weights in Assets/Scripts
+4. Save the file in the Assets/Scripts/pretrained_weights folder 
 
