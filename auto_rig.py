@@ -147,7 +147,7 @@ class CharacterExtractorYOLO:
 
         mask_path = os.path.join(self.output_dir, "mask.png")
         cv2.imwrite(mask_path, self.mask)
-        print(f"✅ Saved mask: {mask_path}")
+        print(f"Success: Saved mask: {mask_path}")
         return True
 
     def get_face_anchor_points(self):
@@ -234,7 +234,7 @@ class CharacterExtractorYOLO:
                     cv2.line(overlay, (x, y), (px, py), (0, 255, 0), 2)
         out_path = os.path.join(self.output_dir, "joint_overlay.png")
         cv2.imwrite(out_path, overlay)
-        print(f"✅ Saved overlay: {out_path}")
+        print(f"Success: Saved overlay: {out_path}")
 
     # --- REMOVED save_yaml function ---
 
@@ -286,7 +286,7 @@ class CharacterExtractorYOLO:
                 valid_triangles.append(simplex)
 
         triangles = np.array(valid_triangles)
-        print(f"✓ Generated mesh: {len(vertices)} vertices, {len(triangles)} triangles")
+        print(f"Success: Generated mesh: {len(vertices)} vertices, {len(triangles)} triangles")
         return vertices, triangles
 
     def save_unity_json_files(self, points, simplices, uv_coords, bones, weights):
@@ -323,7 +323,7 @@ class CharacterExtractorYOLO:
         mesh_json_path = os.path.join(self.output_dir, "mesh_data.json")
         with open(mesh_json_path, "w") as f:
             json.dump(mesh_data, f, indent=2)
-        print(f"✅ Saved MeshData JSON: {mesh_json_path}")
+        print(f"Success: Saved MeshData JSON: {mesh_json_path}")
 
         bone_data_list = []
         bind_poses_list = []
@@ -367,7 +367,7 @@ class CharacterExtractorYOLO:
         skeleton_json_path = os.path.join(self.output_dir, "skeleton_data.json")
         with open(skeleton_json_path, "w") as f:
             json.dump(skeleton_data, f, indent=2)
-        print(f"✅ Saved SkeletonData JSON: {skeleton_json_path}")
+        print(f"Success: Saved SkeletonData JSON: {skeleton_json_path}")
 
     def _generate_unity_import_script(self, output_path: Path):
         """Generate Unity C# script for importing with SkinnedMeshRenderer (Copied from Script 1)."""
@@ -570,7 +570,7 @@ public class CharacterImporter : MonoBehaviour
         // Set proper rendering
         skinnedRenderer.updateWhenOffscreen = true;
 
-        Debug.Log("✓ Character imported successfully with full skinned mesh!");
+        Debug.Log("Success: Character imported successfully with full skinned mesh!");
         Debug.Log($"  - {vertices.Length} vertices");
         Debug.Log($"  - {triangles.Length / 3} triangles");
         Debug.Log($"  - {boneArray.Length} bones");
@@ -583,7 +583,7 @@ public class CharacterImporter : MonoBehaviour
         script_path = output_path / "CharacterImporter.cs"
         with open(script_path, 'w') as f:
             f.write(script)
-        print(f"✅ Generated Unity C# script: {script_path.name}")
+        print(f"Success: Generated Unity C# script: {script_path.name}")
 
 
     def run(self):
@@ -593,31 +593,31 @@ public class CharacterImporter : MonoBehaviour
 
         print("\n[1/5] Detecting pose with YOLO...")
         if not self.detect_pose():
-            print("❌ Pose not detected. Aborting.")
+            print("Error: Pose not detected. Aborting.")
             return False
 
         print("\n[2/5] Creating foreground mask...")
         if not self.create_mask_and_texture():
-            print("❌ Mask creation failed. Aborting.")
+            print("Error: Mask creation failed. Aborting.")
             return False
 
         print("\n[3/5] Building skeleton hierarchy...")
         self.build_skeleton()
         if not self.skeleton:
-            print("❌ Skeleton not built. Aborting.")
+            print("Error: Skeleton not built. Aborting.")
             return False
 
         print("\n[4/5] Generating mesh with Delaunay triangulation...")
         try:
             points, simplices = self.generate_mesh()
         except Exception as e:
-            print(f"❌ Mesh generation failed: {e}")
+            print(f"Error: Mesh generation failed: {e}")
             return False
 
         print("\n[5/5] Calculating bone weights and exporting files...")
         bones = self.get_bones_for_export()
         weights = compute_vertex_weights(points, bones, falloff=self.falloff, max_influences=4)
-        print(f"✓ Calculated weights for {len(weights)} vertices")
+        print(f"Success: Calculated weights for {len(weights)} vertices")
 
         # --- Calculate cropped UVs and Texture ---
         ys, xs = np.nonzero(self.mask)
@@ -651,7 +651,7 @@ public class CharacterImporter : MonoBehaviour
         # 2. Save Texture
         character_tex_path = os.path.join(self.output_dir, "character_tex.png")
         imageio.imwrite(character_tex_path, crop_rgb)
-        print(f"✅ Saved cropped texture: {character_tex_path}")
+        print(f"Success: Saved cropped texture: {character_tex_path}")
 
         # 3. Save Debug Overlay
         self.draw_overlay()
@@ -660,7 +660,7 @@ public class CharacterImporter : MonoBehaviour
         self._generate_unity_import_script(Path(self.output_dir))
 
         print("\n" + "=" * 70)
-        print("✓ PIPELINE COMPLETE!".center(70))
+        print("Success: PIPELINE COMPLETE!".center(70))
         print("=" * 70)
         print(f"\nOutput directory: {self.output_dir}")
         print("Generated files:")
@@ -691,7 +691,7 @@ if __name__ == "__main__":
         )
         rigger.run()
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\nError: {e}")
         import traceback
         traceback.print_exc()
         exit(1)

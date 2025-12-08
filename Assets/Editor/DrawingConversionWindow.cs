@@ -308,6 +308,7 @@ public class GenAIPipelineWindow : EditorWindow
             Debug.LogError($"[NewRigger] Exception: {e.Message}");
         }
     }
+    
     private void DrawStatusSection()
     {
         Header("Pipeline Status");
@@ -791,7 +792,7 @@ public class GenAIPipelineWindow : EditorWindow
                         AssetDatabase.Refresh();
                         System.Threading.Thread.Sleep(1000); // Wait 1 more second
                         
-                        RunNewRigger(rootCopy, jobCopy);           // NEW  
+                        RunNewRigger(rootCopy, jobCopy);           // run pose estimation and autorigging
                         AssetDatabase.Refresh();
                         System.Threading.Thread.Sleep(1000);
                         SpawnOutputImage(rootCopy, jobCopy);       // SAME
