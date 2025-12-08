@@ -148,21 +148,22 @@ def save_yaml(kpts, filename):
 def load_pretrained_simplebaseline():
     """Load SimpleBaseline with pretrained COCO weights"""
     
-    checkpoint_path = "pretrained_weights/pose_resnet_50_256x192.pth.tar"
-    
+    SCRIPT_DIR = Path(__file__).resolve().parent
+    WEIGHTS_PATH = SCRIPT_DIR / "pretrained_weights" / "pose_resnet_50_256x192.pth.tar"
+
     # Check if file exists
-    if not os.path.exists(checkpoint_path):
-        print(f"[ERROR] File not found: {checkpoint_path}")
+    if not os.path.exists(WEIGHTS_PATH):
+        print(f"[ERROR] File not found: {WEIGHTS_PATH}")
         print("Please download pose_resnet_50_256x192.pth.tar and place it in pretrained_weights/")
         return None
     
-    print(f"[INFO] Loading pretrained weights from {checkpoint_path}")
+    print(f"[INFO] Loading pretrained weights from {WEIGHTS_PATH}")
     
     # Create model
     model = SimpleBaseline(num_keypoints=17)
     
     # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    checkpoint = torch.load(WEIGHTS_PATH, map_location='cpu')
     
     # Extract state_dict
     if 'state_dict' in checkpoint:

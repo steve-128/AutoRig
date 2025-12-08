@@ -27,7 +27,7 @@ from shapely import geometry
 from skimage import color, filters, measure, morphology, util
 from typing import List, Dict, Tuple
 
-from Assets.Python.simplebaseline_pipeline import (
+from simplebaseline_pipeline import (
     load_pretrained_simplebaseline,
     get_keypoints_from_heatmaps,
     improve_face_detection,

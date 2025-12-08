@@ -8,6 +8,7 @@ using System.Linq;
 using Newtonsoft.Json.Linq;
 
 using Debug = UnityEngine.Debug;
+using Object = UnityEngine.Object;
 
 public class GenAIPipelineWindow : EditorWindow
 {
@@ -142,7 +143,7 @@ public class GenAIPipelineWindow : EditorWindow
     private void CleanupPreviousJobObjects()
     {
         // Kill old preview quads and previously spawned characters
-        var all = UnityEngine.Object.FindObjectsOfType<GameObject>();
+        var all = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
 
         foreach (var go in all)
         {
@@ -588,7 +589,7 @@ public class GenAIPipelineWindow : EditorWindow
         }
 
         // clean up old preview quads
-        var oldPreviews = FindObjectsOfType<GameObject>()
+        var oldPreviews = FindObjectsByType<GameObject>(FindObjectsSortMode.None)
             .Where(go => go.name.Contains("_RefinedPreview") || go.name.Contains("_Preview") || go.name.Contains("_InputPreview"))
             .ToArray();
         
@@ -860,10 +861,10 @@ public class GenAIPipelineWindow : EditorWindow
                         AssetDatabase.Refresh();
                         System.Threading.Thread.Sleep(1000); // Wait 1 more second
                         
-                        // RunAutoRig(rootCopy, jobCopy);           // run pose estimation and autorigging
-                        // AssetDatabase.Refresh();
-                        // System.Threading.Thread.Sleep(1000);
-                        // SpawnOutputImage(rootCopy, jobCopy);       // SAME
+                        RunAutoRig(rootCopy, jobCopy);           // run pose estimation and autorigging
+                        AssetDatabase.Refresh();
+                        System.Threading.Thread.Sleep(1000);
+                        SpawnOutputImage(rootCopy, jobCopy);       // SAME
 
                     }
                     else
