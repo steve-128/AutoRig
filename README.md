@@ -24,9 +24,15 @@ conda activate netflix_f25
 pip install torch torchvision opencv-python pyyaml numpy
 pip install ultralytics
 pip install huggingface_hub
+pip install imageio
+pip install scipy
+pip install shapely
+pip install scikit-image
+pip install pygltflib
 ```
 
 ## 4. Download Pretrained Pose Estimation Weights
 1. Open this Google Drive folder in your browser: https://drive.google.com/drive/folders/1fGLeCgTbaO50wylfV_j1OFTEx8DDpaqh
 2. Download the file: pose_resnet_50_256x192.pth.tar
 3. Save the file in the pretrained_weights folder 
+
