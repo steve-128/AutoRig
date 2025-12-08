@@ -24,8 +24,8 @@ public class GenAIPipelineWindow : EditorWindow
     
     const string condaEnvName = "netflix_f25";
 
-    public string qwenRunnerPath = "Assets/Python/qwen_runner.py";
-    public string autoRiggerPath = "Assets/Python/auto_rig.py";
+    public string qwenRunnerPath = "Assets/Scripts/qwen_runner.py";
+    public string autoRiggerPath = "Assets/Scripts/auto_rig.py";
 
     [MenuItem("GenAI@Berkeley/Netflix Pipeline")]
     public static void Open()
@@ -233,7 +233,7 @@ public class GenAIPipelineWindow : EditorWindow
                 return;
             }
 
-            // 3) run conda run -n netflix_f25 python -u auto_rig.py --input ... --output ... --falloff 40.0
+            // 3) run conda run -n env_name python -u auto_rig.py --input ... --output ... --falloff 40.0
             string fileName;
             string arguments;
 
@@ -387,19 +387,64 @@ public class GenAIPipelineWindow : EditorWindow
         EditorUtility.DisplayDialog("Success", $"Image and metadata saved to:\nAssets/GenAI/{jobName}/Input/", "OK");
     }
 
+    static string ToUnityAssetPath(string fullPath)
+    {
+        if (string.IsNullOrEmpty(fullPath))
+            return null;
+
+        fullPath = fullPath.Replace("\\", "/");
+        int idx = fullPath.IndexOf("Assets/");
+        if (idx < 0)
+            return null;
+
+        return fullPath.Substring(idx);   // "Assets/GenAI/....."
+    }
+
+
     private void SpawnOutputImage(string jobRoot, string jobName)
     {
         CleanupPreviousJobObjects();
         // ========== TRY 3D IMPORT FIRST ==========
-        string meshDataPath = Path.Combine(jobRoot, "Output", "mesh_data.json");
-        string skeletonDataPath = Path.Combine(jobRoot, "Output", "skeleton_data.json");
-        
+        string texAssetPath      = ToUnityAssetPath(Path.Combine(jobRoot, "Output", "character_tex.png"));
+        string meshAssetPath     = ToUnityAssetPath(Path.Combine(jobRoot, "Output", "mesh_data.json"));
+        string skeletonAssetPath = ToUnityAssetPath(Path.Combine(jobRoot, "Output", "skeleton_data.json"));
+
         Debug.Log($"Checking for 3D data...");
-        Debug.Log($"Mesh path: {meshDataPath}");
-        Debug.Log($"Skeleton path: {skeletonDataPath}");
-        Debug.Log($"Mesh exists: {File.Exists(meshDataPath)}");
-        Debug.Log($"Skeleton exists: {File.Exists(skeletonDataPath)}");
+        Debug.Log($"Mesh path: {meshAssetPath}");
+        Debug.Log($"Skeleton path: {skeletonAssetPath}");
+        Debug.Log($"Mesh exists: {File.Exists(meshAssetPath)}");
+        Debug.Log($"Skeleton exists: {File.Exists(skeletonAssetPath)}");
         
+        var tex      = AssetDatabase.LoadAssetAtPath<Texture2D>(texAssetPath);
+        var meshJson = AssetDatabase.LoadAssetAtPath<TextAsset>(meshAssetPath);
+        var skelJson = AssetDatabase.LoadAssetAtPath<TextAsset>(skeletonAssetPath);
+        if (tex == null || meshJson == null || skelJson == null)
+        {
+            Debug.LogError(
+                "[NewRigger] Failed to load one or more assets:\n" +
+                $"  Texture  : {texAssetPath} -> {tex}\n" +
+                $"  Mesh JSON: {meshAssetPath} -> {meshJson}\n" +
+                $"  Skel JSON: {skeletonAssetPath} -> {skelJson}"
+            );
+            return;
+        }
+
+        CharacterImporter importer = Object.FindAnyObjectByType<CharacterImporter>();
+        if (importer == null)
+        {
+            var go = new GameObject("CharacterImporter");
+            importer = go.AddComponent<CharacterImporter>();
+        }
+        importer.characterTexture  = tex;
+        importer.meshDataFile      = meshJson;
+        importer.skeletonDataFile  = skelJson;
+
+        // Build the character (editor-safe entry point)
+        importer.ImportCharacterFromEditor();
+
+        Debug.Log("[NewRigger] Successfully spawned 3D character from exported JSON.");
+    }
+
         // if (File.Exists(meshDataPath) && File.Exists(skeletonDataPath))
         // {
         //     Debug.Log("3D mesh data found, importing character...");
@@ -426,259 +471,186 @@ public class GenAIPipelineWindow : EditorWindow
         // {
         //     Debug.Log("No 3D data, showing 2D preview");
         // }
-        if (File.Exists(meshDataPath) && File.Exists(skeletonDataPath))
-        {
-            Debug.Log("3D mesh data found, importing character with CharacterImporter...");
 
-            // Make sure Unity sees the newly-written JSON / PNG
-            AssetDatabase.Refresh();
+    //     string outputFolder = Path.Combine(jobRoot, "Output");
+    //     string[] possibleFiles = new string[]
+    //     {
+    //         Path.Combine(outputFolder, jobName + "_refined.png"),
+    //         Path.Combine(outputFolder, jobName + "_refined"),
+    //         Path.Combine(outputFolder, jobName + ".png"),
+    //         Path.Combine(outputFolder, "output.png"),
+    //         Path.Combine(outputFolder, "refined.png")
+    //     };
 
-            // Convert absolute paths -> "Assets/..." relative paths
-            string projRoot = Application.dataPath.Substring(0, Application.dataPath.Length - "/Assets".Length);
+    //     string outputPath = null;
+    //     foreach(var file in possibleFiles)
+    //     {
+    //         if(File.Exists(file))
+    //         {
+    //             outputPath = file;
+    //             break;
+    //         }
+    //     }
 
-            string meshRelative = meshDataPath.Replace(projRoot + System.IO.Path.DirectorySeparatorChar, "")
-                                            .Replace("\\", "/");
-            string skeletonRelative = skeletonDataPath.Replace(projRoot + System.IO.Path.DirectorySeparatorChar, "")
-                                                    .Replace("\\", "/");
+    //     // if we didn't find anything just grab the first png
+    //     if(outputPath == null && Directory.Exists(outputFolder))
+    //     {
+    //         var pngFiles = Directory.GetFiles(outputFolder, "*.png");
+    //         if(pngFiles.Length > 0)
+    //             outputPath = pngFiles[0];
+    //     }
 
-            string texPath = System.IO.Path.Combine(jobRoot, "Output", "character_tex.png");
-            string texRelative = texPath.Replace(projRoot + System.IO.Path.DirectorySeparatorChar, "")
-                                        .Replace("\\", "/");
+    //     if(outputPath == null || !File.Exists(outputPath))
+    //     {
+    //         Debug.LogError("couldn't find output image in Output folder");
+    //         return;
+    //     }
 
-            // Import as assets
-            AssetDatabase.ImportAsset(meshRelative, ImportAssetOptions.ForceUpdate);
-            AssetDatabase.ImportAsset(skeletonRelative, ImportAssetOptions.ForceUpdate);
-            if (File.Exists(texPath))
-                AssetDatabase.ImportAsset(texRelative, ImportAssetOptions.ForceUpdate);
+    //     // find input image too
+    //     string inputFolder = Path.Combine(jobRoot, "Input");
+    //     string inputPath = null;
+    //     if(Directory.Exists(inputFolder))
+    //     {
+    //         var inputFiles = Directory.GetFiles(inputFolder, "*.png")
+    //             .Concat(Directory.GetFiles(inputFolder, "*.jpg"))
+    //             .Concat(Directory.GetFiles(inputFolder, "*.jpeg"))
+    //             .ToArray();
+    //         if(inputFiles.Length > 0)
+    //             inputPath = inputFiles[0];
+    //     }
 
-            TextAsset meshAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(meshRelative);
-            TextAsset skeletonAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(skeletonRelative);
-            Texture2D texAsset = File.Exists(texPath)
-                ? AssetDatabase.LoadAssetAtPath<Texture2D>(texRelative)
-                : null;
+    //     AssetDatabase.Refresh();
 
-            if (meshAsset == null || skeletonAsset == null)
-            {
-                Debug.LogError("[3D Import] Could not load mesh/skeleton TextAssets.");
-            }
-            else
-            {
-                // Find or create a CharacterImporter host in the scene
-                CharacterImporter importer = UnityEngine.Object.FindObjectOfType<CharacterImporter>();
-                if (importer == null)
-                {
-                    GameObject host = new GameObject("CharacterImporterHost");
-                    importer = host.AddComponent<CharacterImporter>();
-                }
+    //     // convert paths to unity format
+    //     string projectRoot = Application.dataPath.Substring(0, Application.dataPath.Length - "/Assets".Length);
+    //     string outputRelativePath = outputPath.Replace(projectRoot + "/", "").Replace("\\", "/");
 
-                importer.meshDataFile = meshAsset;
-                importer.skeletonDataFile = skeletonAsset;
-                importer.characterTexture = texAsset;
-
-                GameObject character = importer.ImportCharacterFromEditor();
-
-                if (character != null)
-                {
-                    Camera sceneCamera = Camera.main;
-                    if (sceneCamera != null)
-                    {
-                        character.transform.position =
-                            sceneCamera.transform.position + sceneCamera.transform.forward * 5f;
-                        character.transform.rotation = Quaternion.Euler(0, 180, 0);
-                    }
-
-                    character.transform.localScale = character.transform.localScale * 2.0f;
-                    Selection.activeGameObject = character;
-                    SceneView.lastActiveSceneView?.FrameSelected();
-                    Debug.Log($"✅ Successfully spawned 3D character: {jobName}");
-                    return;
-                }
-            }
-        }
-        else
-        {
-            Debug.Log("No 3D data, showing 2D preview");
-        }
-
-        string outputFolder = Path.Combine(jobRoot, "Output");
-        string[] possibleFiles = new string[]
-        {
-            Path.Combine(outputFolder, jobName + "_refined.png"),
-            Path.Combine(outputFolder, jobName + "_refined"),
-            Path.Combine(outputFolder, jobName + ".png"),
-            Path.Combine(outputFolder, "output.png"),
-            Path.Combine(outputFolder, "refined.png")
-        };
-
-        string outputPath = null;
-        foreach(var file in possibleFiles)
-        {
-            if(File.Exists(file))
-            {
-                outputPath = file;
-                break;
-            }
-        }
-
-        // if we didn't find anything just grab the first png
-        if(outputPath == null && Directory.Exists(outputFolder))
-        {
-            var pngFiles = Directory.GetFiles(outputFolder, "*.png");
-            if(pngFiles.Length > 0)
-                outputPath = pngFiles[0];
-        }
-
-        if(outputPath == null || !File.Exists(outputPath))
-        {
-            Debug.LogError("couldn't find output image in Output folder");
-            return;
-        }
-
-        // find input image too
-        string inputFolder = Path.Combine(jobRoot, "Input");
-        string inputPath = null;
-        if(Directory.Exists(inputFolder))
-        {
-            var inputFiles = Directory.GetFiles(inputFolder, "*.png")
-                .Concat(Directory.GetFiles(inputFolder, "*.jpg"))
-                .Concat(Directory.GetFiles(inputFolder, "*.jpeg"))
-                .ToArray();
-            if(inputFiles.Length > 0)
-                inputPath = inputFiles[0];
-        }
-
-        AssetDatabase.Refresh();
-
-        // convert paths to unity format
-        string projectRoot = Application.dataPath.Substring(0, Application.dataPath.Length - "/Assets".Length);
-        string outputRelativePath = outputPath.Replace(projectRoot + "/", "").Replace("\\", "/");
-
-        AssetDatabase.ImportAsset(outputRelativePath, ImportAssetOptions.ForceUpdate);
+    //     AssetDatabase.ImportAsset(outputRelativePath, ImportAssetOptions.ForceUpdate);
         
-        // set npot scale to none so aspect ratio is preserved
-        TextureImporter outputImporter = AssetImporter.GetAtPath(outputRelativePath) as TextureImporter;
-        if(outputImporter != null)
-        {
-            outputImporter.npotScale = TextureImporterNPOTScale.None;
-            outputImporter.SaveAndReimport();
-        }
+    //     // set npot scale to none so aspect ratio is preserved
+    //     TextureImporter outputImporter = AssetImporter.GetAtPath(outputRelativePath) as TextureImporter;
+    //     if(outputImporter != null)
+    //     {
+    //         outputImporter.npotScale = TextureImporterNPOTScale.None;
+    //         outputImporter.SaveAndReimport();
+    //     }
         
-        Texture2D outputTex = AssetDatabase.LoadAssetAtPath<Texture2D>(outputRelativePath);
+    //     Texture2D outputTex = AssetDatabase.LoadAssetAtPath<Texture2D>(outputRelativePath);
 
-        if(outputTex == null)
-        {
-            Debug.LogError($"failed to load texture from {outputRelativePath}");
-            return;
-        }
+    //     if(outputTex == null)
+    //     {
+    //         Debug.LogError($"failed to load texture from {outputRelativePath}");
+    //         return;
+    //     }
 
-        // load input texture
-        Texture2D inputTex = null;
-        if(inputPath != null)
-        {
-            string inputRelativePath = inputPath.Replace(projectRoot + "/", "").Replace("\\", "/");
-            AssetDatabase.ImportAsset(inputRelativePath, ImportAssetOptions.ForceUpdate);
+    //     // load input texture
+    //     Texture2D inputTex = null;
+    //     if(inputPath != null)
+    //     {
+    //         string inputRelativePath = inputPath.Replace(projectRoot + "/", "").Replace("\\", "/");
+    //         AssetDatabase.ImportAsset(inputRelativePath, ImportAssetOptions.ForceUpdate);
             
-            TextureImporter inputImporter = AssetImporter.GetAtPath(inputRelativePath) as TextureImporter;
-            if(inputImporter != null)
-            {
-                inputImporter.npotScale = TextureImporterNPOTScale.None;
-                inputImporter.SaveAndReimport();
-            }
+    //         TextureImporter inputImporter = AssetImporter.GetAtPath(inputRelativePath) as TextureImporter;
+    //         if(inputImporter != null)
+    //         {
+    //             inputImporter.npotScale = TextureImporterNPOTScale.None;
+    //             inputImporter.SaveAndReimport();
+    //         }
             
-            inputTex = AssetDatabase.LoadAssetAtPath<Texture2D>(inputRelativePath);
-        }
+    //         inputTex = AssetDatabase.LoadAssetAtPath<Texture2D>(inputRelativePath);
+    //     }
 
-        // clean up old preview quads
-        var oldPreviews = FindObjectsByType<GameObject>(FindObjectsSortMode.None)
-            .Where(go => go.name.Contains("_RefinedPreview") || go.name.Contains("_Preview") || go.name.Contains("_InputPreview"))
-            .ToArray();
+    //     // clean up old preview quads
+    //     var oldPreviews = FindObjectsByType<GameObject>(FindObjectsSortMode.None)
+    //         .Where(go => go.name.Contains("_RefinedPreview") || go.name.Contains("_Preview") || go.name.Contains("_InputPreview"))
+    //         .ToArray();
         
-        foreach(var old in oldPreviews)
-            DestroyImmediate(old);
+    //     foreach(var old in oldPreviews)
+    //         DestroyImmediate(old);
 
-        // spawn main output quad
-        GameObject outputQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        outputQuad.name = jobName + "_RefinedPreview";
+    //     // spawn main output quad
+    //     GameObject outputQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+    //     outputQuad.name = jobName + "_RefinedPreview";
 
-        // URP-friendly shader for 2D quad
-        Shader outShader = Shader.Find("Universal Render Pipeline/Unlit");
-        if (outShader == null)
-            outShader = Shader.Find("Universal Render Pipeline/Lit");
-        if (outShader == null)
-            outShader = Shader.Find("Sprites/Default");
+    //     // URP-friendly shader for 2D quad
+    //     Shader outShader = Shader.Find("Universal Render Pipeline/Unlit");
+    //     if (outShader == null)
+    //         outShader = Shader.Find("Universal Render Pipeline/Lit");
+    //     if (outShader == null)
+    //         outShader = Shader.Find("Sprites/Default");
 
-        Material outputMat = new Material(outShader);
-        if (outputMat.HasProperty("_BaseMap"))
-            outputMat.SetTexture("_BaseMap", outputTex);
-        else
-            outputMat.mainTexture = outputTex;
+    //     Material outputMat = new Material(outShader);
+    //     if (outputMat.HasProperty("_BaseMap"))
+    //         outputMat.SetTexture("_BaseMap", outputTex);
+    //     else
+    //         outputMat.mainTexture = outputTex;
 
-        outputQuad.GetComponent<MeshRenderer>().sharedMaterial = outputMat;
+    //     outputQuad.GetComponent<MeshRenderer>().sharedMaterial = outputMat;
 
 
-        Camera mainCam = Camera.main;
-        if(mainCam != null)
-        {
-            float distance = 10f;
-            float height = 2f * distance * Mathf.Tan(mainCam.fieldOfView * 0.5f * Mathf.Deg2Rad);
-            float width = height * mainCam.aspect;
+    //     Camera mainCam = Camera.main;
+    //     if(mainCam != null)
+    //     {
+    //         float distance = 10f;
+    //         float height = 2f * distance * Mathf.Tan(mainCam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+    //         float width = height * mainCam.aspect;
 
-            outputQuad.transform.localScale = new Vector3(width, height, 2f);
-            outputQuad.transform.position = mainCam.transform.position + mainCam.transform.forward * distance;
-            outputQuad.transform.rotation = mainCam.transform.rotation;
+    //         outputQuad.transform.localScale = new Vector3(width, height, 2f);
+    //         outputQuad.transform.position = mainCam.transform.position + mainCam.transform.forward * distance;
+    //         outputQuad.transform.rotation = mainCam.transform.rotation;
 
-            // spawn input preview in corner
-            if(inputTex != null)
-            {
-                GameObject inputQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-                inputQuad.name = jobName + "_InputPreview";
+    //         // spawn input preview in corner
+    //         if(inputTex != null)
+    //         {
+    //             GameObject inputQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+    //             inputQuad.name = jobName + "_InputPreview";
 
-                Shader inShader = Shader.Find("Universal Render Pipeline/Unlit");
-                if (inShader == null)
-                    inShader = Shader.Find("Universal Render Pipeline/Lit");
-                if (inShader == null)
-                    inShader = Shader.Find("Sprites/Default");
+    //             Shader inShader = Shader.Find("Universal Render Pipeline/Unlit");
+    //             if (inShader == null)
+    //                 inShader = Shader.Find("Universal Render Pipeline/Lit");
+    //             if (inShader == null)
+    //                 inShader = Shader.Find("Sprites/Default");
 
-                Material inputMat = new Material(inShader);
-                if (inputMat.HasProperty("_BaseMap"))
-                    inputMat.SetTexture("_BaseMap", inputTex);
-                else
-                    inputMat.mainTexture = inputTex;
+    //             Material inputMat = new Material(inShader);
+    //             if (inputMat.HasProperty("_BaseMap"))
+    //                 inputMat.SetTexture("_BaseMap", inputTex);
+    //             else
+    //                 inputMat.mainTexture = inputTex;
 
-                inputQuad.GetComponent<MeshRenderer>().sharedMaterial = inputMat;
+    //             inputQuad.GetComponent<MeshRenderer>().sharedMaterial = inputMat;
 
-                float inputAspect = (float)inputTex.width / inputTex.height;
-                float inputWidth = width * 0.2f;
-                float inputHeight = inputWidth / inputAspect;
+    //             float inputAspect = (float)inputTex.width / inputTex.height;
+    //             float inputWidth = width * 0.2f;
+    //             float inputHeight = inputWidth / inputAspect;
                 
-                inputQuad.transform.localScale = new Vector3(inputWidth, inputHeight, 1f);
+    //             inputQuad.transform.localScale = new Vector3(inputWidth, inputHeight, 1f);
                 
-                // position in top right
-                float xOffset = (width * 0.5f) - (inputWidth * 0.5f) - 0.3f;
-                float yOffset = (height * 0.5f) - (inputHeight * 0.5f) - 0.3f;
+    //             // position in top right
+    //             float xOffset = (width * 0.5f) - (inputWidth * 0.5f) - 0.3f;
+    //             float yOffset = (height * 0.5f) - (inputHeight * 0.5f) - 0.3f;
                 
-                Vector3 topRightOffset = mainCam.transform.right * xOffset + mainCam.transform.up * yOffset;
+    //             Vector3 topRightOffset = mainCam.transform.right * xOffset + mainCam.transform.up * yOffset;
                 
-                inputQuad.transform.position = outputQuad.transform.position + topRightOffset;
-                inputQuad.transform.position -= mainCam.transform.forward * 0.1f;
-                inputQuad.transform.rotation = mainCam.transform.rotation;
-            }
-        }
-        else
-        {
-            // no camera found, just place it somewhere
-            float height = 10f;
-            float aspect = (float)outputTex.width / outputTex.height;
-            outputQuad.transform.localScale = new Vector3(aspect * height, height, 1f);
-            outputQuad.transform.position = new Vector3(0f, 0f, 10f);
-            outputQuad.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
-        }
+    //             inputQuad.transform.position = outputQuad.transform.position + topRightOffset;
+    //             inputQuad.transform.position -= mainCam.transform.forward * 0.1f;
+    //             inputQuad.transform.rotation = mainCam.transform.rotation;
+    //         }
+    //     }
+    //     else
+    //     {
+    //         // no camera found, just place it somewhere
+    //         float height = 10f;
+    //         float aspect = (float)outputTex.width / outputTex.height;
+    //         outputQuad.transform.localScale = new Vector3(aspect * height, height, 1f);
+    //         outputQuad.transform.position = new Vector3(0f, 0f, 10f);
+    //         outputQuad.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+    //     }
         
-        Selection.activeGameObject = outputQuad;
-        SceneView.lastActiveSceneView?.FrameSelected();
+    //     Selection.activeGameObject = outputQuad;
+    //     SceneView.lastActiveSceneView?.FrameSelected();
         
-        Debug.Log($"spawned output image preview");
-    }
+    //     Debug.Log($"spawned output image preview");
+    // }
 
     private void CreateFolders(string jobName)
     {

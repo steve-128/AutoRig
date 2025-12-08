@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json;
 
+[ExecuteInEditMode]
 public class CharacterImporter : MonoBehaviour
 {
     [System.Serializable]
