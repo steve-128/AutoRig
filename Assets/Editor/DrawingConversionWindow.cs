@@ -1,10 +1,13 @@
 #if UNITY_EDITOR
 using UnityEditor;
 using UnityEngine;
+using System.Diagnostics;
 using System;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json.Linq;
+
+using Debug = UnityEngine.Debug;
 
 public class GenAIPipelineWindow : EditorWindow
 {
@@ -21,7 +24,7 @@ public class GenAIPipelineWindow : EditorWindow
     const string condaEnvName = "netflix_f25";
 
     public string qwenRunnerPath = "Assets/Python/qwen_runner.py";
-    public string newRiggerPath = "Assets/Python/new_rigger.py";
+    public string autoRiggerPath = "Assets/Python/auto_rig.py";
 
     [MenuItem("GenAI@Berkeley/Netflix Pipeline")]
     public static void Open()
@@ -156,7 +159,6 @@ public class GenAIPipelineWindow : EditorWindow
         }
     }
 
-
     private void DrawRunSection()
     {
         Header("3) Run Qwen Pipeline");
@@ -205,65 +207,57 @@ public class GenAIPipelineWindow : EditorWindow
         }
     }
 
-    private void RunNewRigger(string rootPath, string jobName)
+
+    private void RunAutoRig(string rootPath, string jobName)
     {
         try
         {
+            // rootPath is already absolute, e.g. <project>/Assets/GenAI/<jobName>
             string outputFolder = Path.Combine(rootPath, "Output");
-            string inputFolder = Path.Combine(rootPath, "Input");
 
-            // Find input image
-            string inputImage = null;
-            if (Directory.Exists(inputFolder))
-            {
-                var images = Directory.GetFiles(inputFolder, "*.png")
-                    .Concat(Directory.GetFiles(inputFolder, "*.jpg"))
-                    .Concat(Directory.GetFiles(inputFolder, "*.jpeg"))
-                    .ToArray();
-                if (images.Length > 0)
-                    inputImage = images[0];
-            }
+            // 1) Find Qwen output ot be auto_rig's input
+            string inputImage = Path.Combine(outputFolder, jobName + "_refined.png");    
 
             if (string.IsNullOrEmpty(inputImage) || !File.Exists(inputImage))
             {
-                Debug.LogWarning($"[NewRigger] No input image found for {jobName}, skipping.");
+                Debug.LogWarning($"[AutoRig] No refined output image found in {outputFolder}, skipping autorig.");
                 return;
             }
 
-            // Path to the new script
-            string scriptPath = "Assets/Python/mesh_generator_v2_modified.py";
+            // 2) find auto_rig.py
+            string scriptPath = autoRiggerPath;
             if (!File.Exists(scriptPath))
             {
-                Debug.LogWarning($"[NewRigger] Script not found at: {scriptPath}");
+                EditorUtility.DisplayDialog("Error", $"[AutoRig] Script not found at:\n{scriptPath}", "OK");
                 return;
             }
 
+            // 3) run conda run -n netflix_f25 python -u auto_rig.py --input ... --output ... --falloff 40.0
             string fileName;
             string arguments;
 
             if (Application.platform == RuntimePlatform.WindowsEditor)
             {
                 // Use cmd.exe on Windows
-                fileName  = "cmd.exe";
+                fileName = "cmd.exe";
                 arguments =
-                    $"/C conda run -n {condaEnvName} python -u \"{newRiggerPath}\" " +
-                    $"-u \"{scriptPath}\" --input \"{inputImage}\" --output \"{outputFolder}\" --falloff 40.0";
+                    $"/C conda run -n {condaEnvName} python -u \"{scriptPath}\" " +
+                    $"--input \"{inputImage}\" --output \"{outputFolder}\" --falloff 40.0";
             }
             else if (Application.platform == RuntimePlatform.OSXEditor)
             {
                 // Use bash -lc on macOS so it loads conda from your shell init
-                fileName  = "/bin/bash";
+                fileName = "/bin/bash";
                 arguments =
-                    $"-lc \"conda run -n {condaEnvName} python -u '{newRiggerPath}' " +
-                    $"-u \"{scriptPath}\" --input \"{inputImage}\" --output \"{outputFolder}\" --falloff 40.0";
+                    $"-lc \"conda run -n {condaEnvName} python -u '{scriptPath}' " +
+                    $"--input '{inputImage}' --output '{outputFolder}' --falloff 40.0\"";
             }
             else
             {
-                Debug.LogError("Qwen pipeline: unsupported platform.");
+                Debug.LogError("[AutoRig] Unsupported platform.");
                 return;
             }
 
-            // Build command
             var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = fileName,
@@ -277,13 +271,12 @@ public class GenAIPipelineWindow : EditorWindow
 
             psi.EnvironmentVariables["PYTHONUNBUFFERED"] = "1";
 
-            Debug.Log($"[NewRigger] Running mesh generator for {jobName}");
-
+            Debug.Log($"[AutoRig] Running auto_rig for {jobName}");
             using (var proc = System.Diagnostics.Process.Start(psi))
             {
                 if (proc == null)
                 {
-                    Debug.LogError("[NewRigger] Failed to start mesh generator");
+                    Debug.LogError("[AutoRig] Failed to start auto_rig");
                     return;
                 }
 
@@ -292,20 +285,23 @@ public class GenAIPipelineWindow : EditorWindow
                 proc.WaitForExit();
 
                 if (!string.IsNullOrEmpty(stdout))
-                    Debug.Log("[NewRigger stdout]\n" + stdout);
-
+                    Debug.Log("[AutoRig stdout]\n" + stdout);
                 if (!string.IsNullOrEmpty(stderr))
-                    Debug.LogWarning("[NewRigger stderr]\n" + stderr);
+                    Debug.LogWarning("[AutoRig stderr]\n" + stderr);
 
                 if (proc.ExitCode == 0)
-                    Debug.Log($"[NewRigger] Mesh generation completed for {jobName}");
+                {
+                    Debug.Log($"[AutoRig] Mesh + skeleton export completed for {jobName}");
+                }
                 else
-                    Debug.LogError($"[NewRigger] Mesh generation failed with exit code {proc.ExitCode}");
+                {
+                    Debug.LogError($"[AutoRig] auto_rig failed with exit code {proc.ExitCode}");
+                }
             }
         }
         catch (Exception e)
         {
-            Debug.LogError($"[NewRigger] Exception: {e.Message}");
+            Debug.LogError($"[AutoRig] Exception: {e.Message}");
         }
     }
     
@@ -403,33 +399,105 @@ public class GenAIPipelineWindow : EditorWindow
         Debug.Log($"Mesh exists: {File.Exists(meshDataPath)}");
         Debug.Log($"Skeleton exists: {File.Exists(skeletonDataPath)}");
         
+        // if (File.Exists(meshDataPath) && File.Exists(skeletonDataPath))
+        // {
+        //     Debug.Log("3D mesh data found, importing character...");
+        //     GameObject character = CharacterImporter.ImportCharacter(jobRoot, jobName);
+            
+        //     if (character != null)
+        //     {
+        //         Camera sceneCamera = Camera.main;
+        //         if (sceneCamera != null)
+        //         {
+        //             character.transform.position = sceneCamera.transform.position + sceneCamera.transform.forward * 5f;
+        //             character.transform.rotation = Quaternion.Euler(0, 180, 0);
+        //         }
+        //         character.transform.localScale = character.transform.localScale * 2.0f;
+                
+        //         Selection.activeGameObject = character;
+        //         SceneView.lastActiveSceneView?.FrameSelected();
+                
+        //         Debug.Log($"✅ Successfully spawned 3D character: {jobName}");
+        //         return;
+        //     }
+        // }
+        // else
+        // {
+        //     Debug.Log("No 3D data, showing 2D preview");
+        // }
         if (File.Exists(meshDataPath) && File.Exists(skeletonDataPath))
         {
-            Debug.Log("3D mesh data found, importing character...");
-            GameObject character = MeshImporter.ImportCharacter(jobRoot, jobName);
-            
-            if (character != null)
+            Debug.Log("3D mesh data found, importing character with CharacterImporter...");
+
+            // Make sure Unity sees the newly-written JSON / PNG
+            AssetDatabase.Refresh();
+
+            // Convert absolute paths -> "Assets/..." relative paths
+            string projRoot = Application.dataPath.Substring(0, Application.dataPath.Length - "/Assets".Length);
+
+            string meshRelative = meshDataPath.Replace(projRoot + System.IO.Path.DirectorySeparatorChar, "")
+                                            .Replace("\\", "/");
+            string skeletonRelative = skeletonDataPath.Replace(projRoot + System.IO.Path.DirectorySeparatorChar, "")
+                                                    .Replace("\\", "/");
+
+            string texPath = System.IO.Path.Combine(jobRoot, "Output", "character_tex.png");
+            string texRelative = texPath.Replace(projRoot + System.IO.Path.DirectorySeparatorChar, "")
+                                        .Replace("\\", "/");
+
+            // Import as assets
+            AssetDatabase.ImportAsset(meshRelative, ImportAssetOptions.ForceUpdate);
+            AssetDatabase.ImportAsset(skeletonRelative, ImportAssetOptions.ForceUpdate);
+            if (File.Exists(texPath))
+                AssetDatabase.ImportAsset(texRelative, ImportAssetOptions.ForceUpdate);
+
+            TextAsset meshAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(meshRelative);
+            TextAsset skeletonAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(skeletonRelative);
+            Texture2D texAsset = File.Exists(texPath)
+                ? AssetDatabase.LoadAssetAtPath<Texture2D>(texRelative)
+                : null;
+
+            if (meshAsset == null || skeletonAsset == null)
             {
-                Camera sceneCamera = Camera.main;
-                if (sceneCamera != null)
+                Debug.LogError("[3D Import] Could not load mesh/skeleton TextAssets.");
+            }
+            else
+            {
+                // Find or create a CharacterImporter host in the scene
+                CharacterImporter importer = UnityEngine.Object.FindObjectOfType<CharacterImporter>();
+                if (importer == null)
                 {
-                    character.transform.position = sceneCamera.transform.position + sceneCamera.transform.forward * 5f;
-                    character.transform.rotation = Quaternion.Euler(0, 180, 0);
+                    GameObject host = new GameObject("CharacterImporterHost");
+                    importer = host.AddComponent<CharacterImporter>();
                 }
-                character.transform.localScale = character.transform.localScale * 2.0f;
-                
-                Selection.activeGameObject = character;
-                SceneView.lastActiveSceneView?.FrameSelected();
-                
-                Debug.Log($"✅ Successfully spawned 3D character: {jobName}");
-                return;
+
+                importer.meshDataFile = meshAsset;
+                importer.skeletonDataFile = skeletonAsset;
+                importer.characterTexture = texAsset;
+
+                GameObject character = importer.ImportCharacterFromEditor();
+
+                if (character != null)
+                {
+                    Camera sceneCamera = Camera.main;
+                    if (sceneCamera != null)
+                    {
+                        character.transform.position =
+                            sceneCamera.transform.position + sceneCamera.transform.forward * 5f;
+                        character.transform.rotation = Quaternion.Euler(0, 180, 0);
+                    }
+
+                    character.transform.localScale = character.transform.localScale * 2.0f;
+                    Selection.activeGameObject = character;
+                    SceneView.lastActiveSceneView?.FrameSelected();
+                    Debug.Log($"✅ Successfully spawned 3D character: {jobName}");
+                    return;
+                }
             }
         }
         else
         {
             Debug.Log("No 3D data, showing 2D preview");
         }
-        
 
         string outputFolder = Path.Combine(jobRoot, "Output");
         string[] possibleFiles = new string[]
@@ -792,10 +860,10 @@ public class GenAIPipelineWindow : EditorWindow
                         AssetDatabase.Refresh();
                         System.Threading.Thread.Sleep(1000); // Wait 1 more second
                         
-                        RunNewRigger(rootCopy, jobCopy);           // run pose estimation and autorigging
-                        AssetDatabase.Refresh();
-                        System.Threading.Thread.Sleep(1000);
-                        SpawnOutputImage(rootCopy, jobCopy);       // SAME
+                        // RunAutoRig(rootCopy, jobCopy);           // run pose estimation and autorigging
+                        // AssetDatabase.Refresh();
+                        // System.Threading.Thread.Sleep(1000);
+                        // SpawnOutputImage(rootCopy, jobCopy);       // SAME
 
                     }
                     else
