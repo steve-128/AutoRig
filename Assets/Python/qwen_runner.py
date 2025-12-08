@@ -7,14 +7,8 @@ import os, sys, json, argparse, base64, mimetypes, time, traceback, subprocess
 from pathlib import Path
 from huggingface_hub import InferenceClient
 from PIL import Image
+import shutil
 import io
-
-print("=== PYTHON INFO FROM UNITY ===")
-print("Executable :", sys.executable)
-print("Version    :", sys.version)
-print("VIRTUAL_ENV:", os.environ.get("VIRTUAL_ENV"))
-print("CONDA_DEFAULT_ENV:", os.environ.get("CONDA_DEFAULT_ENV"))
-print("================================")
 
 def ensure_min_resolution(image_path: Path, min_size: int = 512) -> Path:
     """
@@ -22,7 +16,6 @@ def ensure_min_resolution(image_path: Path, min_size: int = 512) -> Path:
     If not, upscale it and save to Working folder.
     Returns path to the (possibly upscaled) image.
     """
-    from PIL import Image
     img = Image.open(image_path)
     width, height = img.size
     
@@ -243,90 +236,6 @@ def step_flux_refine(root: Path, qwen_img: Image.Image, creature: str, features:
     write_status(root, "flux", 0.95, "flux ok")
     return img
 
-def step_3d_rigging(root: Path, refined_image: Path, job: str):
-    """
-    NEW: Call hybrid_rigger.py to generate 3D mesh, skeleton, and GLB
-    """
-    write_status(root, "rigging", 0.96, "generating 3D mesh")
-    write_log(root, "3D Rigging: starting hybrid_rigger.py")
-    
-    # Find hybrid_rigger.py
-    rigger_script = None
-    possible_paths = [
-        Path("Assets/Python/hybrid_rigger.py"),
-        Path("Python/hybrid_rigger.py"),
-        Path("hybrid_rigger.py"),
-    ]
-    
-    for path in possible_paths:
-        if path.exists():
-            rigger_script = path
-            break
-    
-    if rigger_script is None:
-        write_log(root, "WARNING: hybrid_rigger.py not found, skipping 3D rigging")
-        write_status(root, "rigging", 0.98, "skipped (rigger not found)")
-        return
-    
-    # *** CHANGED: Create temp file with job name ***
-    temp_image = root / "Working" / f"{job}.png"
-    import shutil
-    shutil.copy(refined_image, temp_image)
-    
-    # Prepare output directory
-    rigger_output = root / "Working" / "rigger_temp"
-    rigger_output.mkdir(parents=True, exist_ok=True)
-    
-    # Find Python executable
-    python_path = sys.executable
-    if not python_path:
-        python_path = "python3"
-    
-    # Build command
-    cmd = [
-        python_path,
-        str(rigger_script),
-        "--input", str(temp_image),
-        "--output", str(rigger_output),
-        "--falloff", "40.0"
-    ]
-    
-    try:
-        write_log(root, f"Running: {' '.join(cmd)}")
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=300
-        )
-        
-        if result.returncode == 0:
-            write_log(root, "3D Rigging completed successfully")
-            write_log(root, result.stdout)
-            
-            # *** CHANGED: Copy outputs to main Output folder ***
-            source_folder = rigger_output / job
-            if source_folder.exists():
-                for file in source_folder.glob("*"):
-                    if file.name in ["mesh_data.json", "skeleton_data.json", "character.glb", 
-                                   "character_tex.png", "joint_overlay.png", "mask.png"]:
-                        dest = root / "Output" / file.name
-                        shutil.copy(file, dest)
-                        write_log(root, f"Copied {file.name} to Output/")
-            
-            write_status(root, "rigging", 0.98, "3D rigging complete")
-        else:
-            write_log(root, f"WARNING: hybrid_rigger.py failed with code {result.returncode}")
-            write_log(root, result.stderr)
-            write_status(root, "rigging", 0.98, "rigging failed (continuing)")
-            
-    except subprocess.TimeoutExpired:
-        write_log(root, "WARNING: hybrid_rigger.py timed out")
-        write_status(root, "rigging", 0.98, "rigging timeout (continuing)")
-    except Exception as e:
-        write_log(root, f"WARNING: hybrid_rigger.py exception: {e}")
-        write_status(root, "rigging", 0.98, "rigging error (continuing)")
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True, help="Job root folder (…/Assets/GenAI/<job>)")
@@ -357,9 +266,6 @@ def main():
         # Save final 2D outputs
         out_png = root / "Output" / f"{job}_refined.png"
         save_pil_to(out_png, flux_img)
-
-        # NEW: 3D Rigging step
-        step_3d_rigging(root, out_png, job)
 
         # Unity import metadata
         meta = {"scale": 1.0, "pivot": [0, 0, 0], "upAxis": "Y", "rig": "humanoid"}
