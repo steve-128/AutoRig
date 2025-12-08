@@ -3,7 +3,7 @@
 mesh_generator_v2_modified.py
 
 End-to-end pipeline:
-- YOLO pose detection (from test_main4.py)
+- Simple baseline pose detection
 - Advanced mesh generation with shapely + grid sampling (from mesh_generator.py)
 - Exports: character_tex.png, mesh_data.json, skeleton_data.json, mask/debug assets, CharacterImporter.cs
 
@@ -12,6 +12,7 @@ Usage:
 """
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 
@@ -19,13 +20,18 @@ import cv2
 import imageio
 import numpy as np
 import yaml
+import torch
 from scipy import ndimage as ndi
 from scipy.spatial import Delaunay
 from shapely import geometry
 from skimage import color, filters, measure, morphology, util
-from ultralytics import YOLO
 from typing import List, Dict, Tuple
 
+from simplebaseline_pipeline import (
+    load_pretrained_simplebaseline,
+    get_keypoints_from_heatmaps,
+    improve_face_detection,
+)
 # NOTE: PyGLTFLIB imports are no longer needed but kept for minimal change principle.
 # They will not be used in the export_gltf function, which is removed.
 from pygltflib import (
@@ -51,7 +57,15 @@ from pygltflib import (
 COMP_FLOAT = 5126
 COMP_UNSIGNED_SHORT = 5123
 COMP_UNSIGNED_INT = 5125
-
+COCO_PAIRS = [
+    (5,7),(7,9),     # left arm
+    (6,8),(8,10),    # right arm
+    (11,13),(13,15), # left leg
+    (12,14),(14,16), # right leg
+    (5,6),           # shoulders
+    (11,12),         # hips
+    (5,11),(6,12)    # torso
+]
 
 def extract_contours(mask):
     contours = measure.find_contours(mask.astype(np.uint8), level=0.5)
@@ -70,40 +84,120 @@ def sample_interior_points(mask, n_points=2000):
     pts = np.vstack([xs[idx], ys[idx]]).T
     return pts
 
+def center_points_and_bones(points, bones, root_name="root"):
+    """
+    Shift both vertices (points) and bones so that the root bone is at (0, 0).
 
-def compute_vertex_weights(points, bones, falloff=40.0, max_influences=4):
+    points: np.ndarray of shape (N, 2) or (N, 3)
+    bones:  list of dicts with keys at least: 'name', 'x', 'y'
+    """
+
+    if not bones:
+        return points, bones
+
+    # 1) Find root bone index
+    root_idx = None
+    for i, b in enumerate(bones):
+        if b.get("name") == root_name:
+            root_idx = i
+            break
+    if root_idx is None:
+        # fall back: first bone with parent=None, or bone 0
+        for i, b in enumerate(bones):
+            if b.get("parent") in (None, "", "root"):
+                root_idx = i
+                break
+    if root_idx is None:
+        root_idx = 0
+
+    root_x = float(bones[root_idx]["x"])
+    root_y = float(bones[root_idx]["y"])
+
+    # 2) Shift points
+    pts = np.asarray(points, dtype=float)
+    pts[:, 0] -= root_x
+    pts[:, 1] -= root_y
+
+    # 3) Shift bones copy
+    centered_bones = []
+    for b in bones:
+        b2 = dict(b)
+        b2["x"] = float(b2["x"]) - root_x
+        b2["y"] = float(b2["y"]) - root_y
+        centered_bones.append(b2)
+
+    return pts, centered_bones
+
+def compute_vertex_weights(
+    points,
+    bones,
+    falloff=40.0,
+    max_influences=4,
+    max_distance_factor=3.0,   # how many sigmas away we still allow influence
+    min_rel_weight=0.1         # keep weights >= 10% of the strongest one
+):
+    """
+    Compute per-vertex bone weights using a Gaussian falloff.
+
+    - points: (N, 2) vertex positions
+    - bones:  list of {'name': str, 'x': float, 'y': float}
+    """
+
     if len(bones) == 0:
         return [[] for _ in range(len(points))]
-    bone_pts = np.array([[b["x"], b["y"]] for b in bones])
+
+    points = np.asarray(points, dtype=float).reshape(-1, 2)
+    bone_pts = np.array([[b["x"], b["y"]] for b in bones], dtype=float)
     N = len(points)
 
+    # Squared distances vertex <-> bone
     d2 = np.sum((points[:, None, :] - bone_pts[None, :, :]) ** 2, axis=2)
-    sigma = float(falloff)
-    raw = np.exp(-d2 / (2 * sigma * sigma))
-    raw[raw < 1e-6] = 0.0
 
-    s = raw.sum(axis=1, keepdims=True)
-    s[s == 0] = 1.0
-    norm = raw / s
+    sigma = float(falloff)
+    raw = np.exp(-d2 / (2.0 * sigma * sigma))  # Gaussian weights (not yet normalized)
+
+    # Distance cutoff: ignore bones farther than max_distance_factor * sigma
+    max_d2 = (max_distance_factor * sigma) ** 2
+    raw[d2 > max_d2] = 0.0
 
     weights = []
     for i in range(N):
-        row = norm[i]
-        top_idx = np.argsort(row)[::-1][:max_influences]
-        wlist = []
-        for idx in top_idx:
-            if row[idx] <= 0:
-                continue
-            # Keep only the name and the weight (not the index)
-            wlist.append((bones[idx]["name"], float(row[idx])))
+        row = raw[i].copy()
+
+        total = row.sum()
+        if total <= 0.0:
+            # 🔁 Fallback: bind this vertex to the NEAREST bone (by distance),
+            # not always to root. This lets far fingers still follow the hand.
+            nearest = int(np.argmin(d2[i]))
+            weights.append([(bones[nearest]["name"], 1.0)])
+            continue
+
+        # Normalize
+        row /= total
+
+        # Keep only reasonably strong influences
+        max_w = row.max()
+        keep_mask = row >= max_w * float(min_rel_weight)
+        keep_indices = np.where(keep_mask)[0]
+
+        if keep_indices.size == 0:
+            # Extremely conservative fallback: just nearest bone
+            nearest = int(np.argmax(row))
+            keep_indices = np.array([nearest])
+
+        # Sort kept bones by weight descending and cap to max_influences
+        keep_indices = keep_indices[np.argsort(row[keep_indices])[::-1][:max_influences]]
+
+        wlist = [(bones[idx]["name"], float(row[idx])) for idx in keep_indices]
         weights.append(wlist)
+
     return weights
 
 
 # --- REMOVED export_gltf function ---
 
-
-class CharacterExtractorYOLO:
+# --- REMOVED save_yaml function ---
+class CharacterExtractorSimpleBaseline:
     def __init__(self, image_path, output_dir="output", falloff=40.0):
         self.image_path = image_path
         self.output_dir = output_dir
@@ -114,29 +208,85 @@ class CharacterExtractorYOLO:
         if self.image is None:
             raise FileNotFoundError(f"Could not read image {image_path}")
 
+        # Ensure we always have a 3-channel BGR image
         if len(self.image.shape) == 2 or self.image.shape[2] == 1:
             self.image = cv2.cvtColor(self.image, cv2.COLOR_GRAY2BGR)
         elif self.image.shape[2] == 4:
             self.image = cv2.cvtColor(self.image, cv2.COLOR_BGRA2BGR)
 
         self.height, self.width = self.image.shape[:2]
-        self.model = YOLO("yolov8n-pose.pt")
-        self.keypoints = None
+
+        # --- SimpleBaseline ---
+        self.sb_model = load_pretrained_simplebaseline()
+        if self.sb_model is None:
+            raise RuntimeError(
+                "Failed to load SimpleBaseline model. "
+                "Make sure pretrained_weights/pose_resnet_50_256x192.pth.tar exists."
+            )
+
+        # internal state
+        self.keypoints = None  # np.array shape [17, 2]
         self.skeleton = []
         self.mask = None
 
     def detect_pose(self):
-        results = self.model(self.image, verbose=False)
-        if not results or len(results[0].keypoints.data) == 0:
-            print("⚠ No pose detected.")
-            return False
-        self.keypoints = results[0].keypoints.data[0].cpu().numpy()[:, :2]
+        """
+        Run SimpleBaseline on self.image and fill self.keypoints as
+        a [17, 2] array in (x, y) image coordinates.
+        """
+        orig = self.image
+        orig_h, orig_w = orig.shape[:2]
+
+        # Preprocess to 192x256 like in simplebaseline_pipeline.py
+        inp = cv2.resize(orig, (192, 256))
+        inp_rgb = cv2.cvtColor(inp, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+
+        mean = np.array([0.485, 0.456, 0.406])
+        std = np.array([0.229, 0.224, 0.225])
+        inp_rgb = (inp_rgb - mean) / std
+
+        tensor = torch.from_numpy(inp_rgb).permute(2, 0, 1).unsqueeze(0).float()
+
+        print("[INFO] Running SimpleBaseline pose estimation...")
+        with torch.no_grad():
+            heatmaps = self.sb_model(tensor)
+
+        # Decode heatmaps → 17 keypoints in heatmap space
+        kpts = get_keypoints_from_heatmaps(heatmaps)
+        hm_H, hm_W = heatmaps.shape[2], heatmaps.shape[3]
+
+        # Scale back to original image size
+        final_kpts = []
+        for (hx, hy) in kpts:
+            x = int(hx / hm_W * orig_w)
+            y = int(hy / hm_H * orig_h)
+            final_kpts.append((x, y))
+
+        # Optional face refinement (same logic as simplebaseline_pipeline)
+        try:
+            refinement_result = improve_face_detection(orig, final_kpts, self.sb_model)
+            if refinement_result is not None:
+                refined_face_kpts, _, _ = refinement_result
+                # Replace the first 5 (face) keypoints
+                final_kpts[:5] = refined_face_kpts
+                print("[INFO] ✓ Face keypoints refined by SimpleBaseline.")
+            else:
+                print("[WARN] Face refinement skipped; using original face keypoints.")
+        except Exception as e:
+            print(f"[WARN] Error during face refinement: {e}")
+            print("[WARN] Using original SimpleBaseline keypoints.")
+
+        # Store as numpy array in the same format as before
+        self.keypoints = np.array(final_kpts, dtype=np.float32)
+        print(f"[INFO] Final keypoints (first 5): {self.keypoints[:5]}")
         return True
 
     def create_mask_and_texture(self):
         gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
         # Using a simple threshold for foreground mask
-        _, self.mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        _, self.mask = cv2.threshold(
+            gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        )
         kernel = np.ones((3, 3), np.uint8)
         self.mask = cv2.morphologyEx(self.mask, cv2.MORPH_CLOSE, kernel, iterations=2)
         self.mask = cv2.morphologyEx(self.mask, cv2.MORPH_OPEN, kernel, iterations=1)
@@ -153,41 +303,66 @@ class CharacterExtractorYOLO:
     def get_face_anchor_points(self):
         if self.keypoints is None:
             return None
+
         kp = self.keypoints
         nose = kp[0]
         left_eye = kp[1]
         right_eye = kp[2]
         left_ear = kp[3] if len(kp) > 3 else None
         right_ear = kp[4] if len(kp) > 4 else None
+
         eye_mid_y = (left_eye[1] + right_eye[1]) / 2
         eye_span = abs(left_eye[0] - right_eye[0])
-        if left_ear is None or right_ear is None or np.any(np.isnan(left_ear)) or np.any(np.isnan(right_ear)):
+
+        if (
+            left_ear is None
+            or right_ear is None
+            or np.any(np.isnan(left_ear))
+            or np.any(np.isnan(right_ear))
+        ):
             face_left = [left_eye[0] - 2.0 * eye_span, eye_mid_y]
             face_right = [right_eye[0] + 2.0 * eye_span, eye_mid_y]
         else:
             face_left = left_ear
             face_right = right_ear
-        return {"nose": nose, "left_eye": left_eye, "right_eye": right_eye,
-                "face_left": face_left, "face_right": face_right}
+
+        return {
+            "nose": nose,
+            "left_eye": left_eye,
+            "right_eye": right_eye,
+            "face_left": face_left,
+            "face_right": face_right,
+        }
 
     def build_skeleton(self):
         if self.keypoints is None:
             return
+
         kp = self.keypoints
 
         def xy(i):
             return [float(kp[i][0]), float(kp[i][1])]
 
         joints = {
-            "nose": xy(0), "left_eye": xy(1), "right_eye": xy(2),
-            "left_ear": xy(3), "right_ear": xy(4),
-            "left_shoulder": xy(5), "right_shoulder": xy(6),
-            "left_elbow": xy(7), "right_elbow": xy(8),
-            "left_hand": xy(9), "right_hand": xy(10),
-            "left_hip": xy(11), "right_hip": xy(12),
-            "left_knee": xy(13), "right_knee": xy(14),
-            "left_foot": xy(15), "right_foot": xy(16),
+            "nose": xy(0),
+            "left_eye": xy(1),
+            "right_eye": xy(2),
+            "left_ear": xy(3),
+            "right_ear": xy(4),
+            "left_shoulder": xy(5),
+            "right_shoulder": xy(6),
+            "left_elbow": xy(7),
+            "right_elbow": xy(8),
+            "left_hand": xy(9),
+            "right_hand": xy(10),
+            "left_hip": xy(11),
+            "right_hip": xy(12),
+            "left_knee": xy(13),
+            "right_knee": xy(14),
+            "left_foot": xy(15),
+            "right_foot": xy(16),
         }
+
         face_points = self.get_face_anchor_points()
         if face_points:
             for k, v in face_points.items():
@@ -219,24 +394,40 @@ class CharacterExtractorYOLO:
             {"name": "right_knee", "loc": joints["right_knee"], "parent": "right_hip"},
             {"name": "right_foot", "loc": joints["right_foot"], "parent": "right_knee"},
         ]
+
         for j in self.skeleton:
             j["loc"] = [int(round(j["loc"][0])), int(round(j["loc"][1]))]
 
-    def draw_overlay(self):
-        overlay = self.image.copy()
-        for j in self.skeleton:
-            x, y = j["loc"]
-            cv2.circle(overlay, (x, y), 4, (0, 0, 255), -1)
-            if j["parent"]:
-                parent = next((p for p in self.skeleton if p["name"] == j["parent"]), None)
-                if parent:
-                    px, py = parent["loc"]
-                    cv2.line(overlay, (x, y), (px, py), (0, 255, 0), 2)
-        out_path = os.path.join(self.output_dir, "joint_overlay.png")
-        cv2.imwrite(out_path, overlay)
-        print(f"Success: Saved overlay: {out_path}")
+    def draw_skeleton(self, image, kpts):
+        """Draw skeleton with keypoints and connections"""
+        # Draw lines (skeleton connections)
+        pts: list[tuple[int, int] | None] = []
+        for i, (x, y) in enumerate(kpts):
+            if math.isnan(x) or math.isnan(y):
+                pts.append(None)
+                continue
+            px = int(round(float(x)))
+            py = int(round(float(y)))
+            pts.append((px, py))
 
-    # --- REMOVED save_yaml function ---
+        for (i, j) in COCO_PAIRS:
+            x1, y1 = pts[i]
+            x2, y2 = pts[j]
+            cv2.line(image, (x1, y1), (x2, y2), (0, 255, 0), 3)
+
+        # Draw keypoints (circles)
+        for pt in pts:
+            cv2.circle(image, pt, 5, (0, 0, 255), -1)
+
+        return image
+
+    def draw_overlay(self):
+        skel_img = self.image.copy()
+        skel_img = self.draw_skeleton(skel_img, self.keypoints)
+    
+        out_path = os.path.join(self.output_dir, "joint_overlay.png")
+        cv2.imwrite(out_path, skel_img)
+        print(f"[INFO] Success: Saved skeleton overlay to {out_path}")
 
     def get_bones_for_export(self):
         return [
@@ -290,80 +481,80 @@ class CharacterExtractorYOLO:
         return vertices, triangles
 
     def save_unity_json_files(self, points, simplices, uv_coords, bones, weights):
-        bone_name_to_index = {b["name"]: i for i, b in enumerate(bones)}
+        # 0) Make sure points is an array
+        points = np.asarray(points, dtype=float)
+
+        # 1) Flip Y for geometry & bones to go from image coords (y down)
+        #    to Unity coords (y up). UVs are NOT touched.
+        points_flipped = points.copy()
+        points_flipped[:, 1] = -points_flipped[:, 1]
+
+        bones_flipped = []
+        for b in bones:
+            bf = dict(b)
+            bf["y"] = -float(bf["y"])
+            bones_flipped.append(bf)
+
+        # 1) Center points & bones around the root **only for geometry**
+        points_centered, bones_centered = center_points_and_bones(points_flipped, bones_flipped)
+
+        # 2) Build mesh_data.json from centered geometry
+        vertices = [[float(p[0]), float(p[1]), 0.0] for p in points_centered]
+        triangles = [[int(t[0]), int(t[1]), int(t[2])] for t in simplices]
+        uvs = [[float(u), float(v)] for (u, v) in uv_coords]  # UVs stay as given
+
+        bone_name_to_index = {b["name"]: i for i, b in enumerate(bones_centered)}
 
         bone_weights_list = []
-        for wlist in weights:
-            bw = {
-                "boneIndex0": 0, "boneIndex1": 0, "boneIndex2": 0, "boneIndex3": 0,
-                "weight0": 0.0, "weight1": 0.0, "weight2": 0.0, "weight3": 0.0
-            }
-            # Recalculate total_weight for the top 4 influences to ensure they sum to 1.0
-            top_weights = [w for _, w in wlist[:4] if w > 0]
-            total_weight = sum(top_weights)
-            if total_weight == 0:
-                # Fallback in case weights are zeroed out (shouldn't happen with Gaussian)
-                total_weight = 1.0
+        for vw in weights:
+            idxs = [bone_name_to_index[name] for (name, _) in vw]
+            ws = [w for (_, w) in vw]
 
-            for idx, (bone_name, weight) in enumerate(wlist[:4]):
-                if bone_name in bone_name_to_index:
-                    bw[f"boneIndex{idx}"] = bone_name_to_index[bone_name]
-                    bw[f"weight{idx}"] = float(weight) / total_weight
-            bone_weights_list.append(bw)
+            # pad to 4
+            while len(idxs) < 4:
+                idxs.append(0)
+                ws.append(0.0)
 
-        # NOTE: Vertices are scaled/translated in the C# script, but here they are exported as
-        # raw screen coordinates with a Y-flip, matching the skeleton position format.
+            s = sum(ws)
+            if s > 0:
+                ws = [w / s for w in ws]
+
+            bone_weights_list.append({
+                "boneIndex0": int(idxs[0]),
+                "boneIndex1": int(idxs[1]),
+                "boneIndex2": int(idxs[2]),
+                "boneIndex3": int(idxs[3]),
+                "weight0": float(ws[0]),
+                "weight1": float(ws[1]),
+                "weight2": float(ws[2]),
+                "weight3": float(ws[3]),
+            })
+
         mesh_data = {
-            "vertices": [[float(p[0]), float(-p[1]), 0.0] for p in points],
-            # Triangles are flattened in Unity, but this format is easier to read in JSON
-            "triangles": [[int(s[0]), int(s[1]), int(s[2])] for s in simplices],
-            "uvs": [[float(uv[0]), float(uv[1])] for uv in uv_coords],
-            "boneWeights": bone_weights_list
+            "vertices": vertices,
+            "triangles": triangles,
+            "uvs": uvs,
+            "boneWeights": bone_weights_list,
         }
+        bones_out = []
+        for i, b in enumerate(bones_centered):
+            bones_out.append({
+                "name": b["name"],
+                "parent": b.get("parent"),
+                "index": i,
+                "localPosition": {"x": float(b["x"]), "y": float(b["y"]), "z": 0.0},
+            })
+
+        skeleton_data = {
+            "bones": bones_out,
+            "bindPoses": [],
+        }
+
         mesh_json_path = os.path.join(self.output_dir, "mesh_data.json")
         with open(mesh_json_path, "w") as f:
             json.dump(mesh_data, f, indent=2)
         print(f"Success: Saved MeshData JSON: {mesh_json_path}")
 
-        bone_data_list = []
-        bind_poses_list = []
-        for i, b in enumerate(bones):
-            # Calculate local position relative to parent, ensuring Y-flip for Unity
-            if b.get("parent") is None:
-                local_pos = {"x": float(b["x"]), "y": float(-b["y"]), "z": 0.0}
-            else:
-                parent_bone = next((p for p in bones if p["name"] == b["parent"]), None)
-                if parent_bone:
-                    local_pos = {
-                        "x": float(b["x"] - parent_bone["x"]),
-                        "y": float(-(b["y"] - parent_bone["y"])), # Flip Y-axis difference
-                        "z": 0.0
-                    }
-                else:
-                    local_pos = {"x": float(b["x"]), "y": float(-b["y"]), "z": 0.0}
-
-            bone_data_list.append({
-                "name": b["name"],
-                "parent": b.get("parent"),
-                "index": i,
-                "localPosition": local_pos
-            })
-
-            # Bind pose: Identity matrix is used here for simplicity,
-            # implying the C# script will calculate world space transforms or
-            # rely entirely on the local position.
-            bind_pose = {
-                "m00": 1.0, "m01": 0.0, "m02": 0.0, "m03": 0.0,
-                "m10": 0.0, "m11": 1.0, "m12": 0.0, "m13": 0.0,
-                "m20": 0.0, "m21": 0.0, "m22": 1.0, "m23": 0.0,
-                "m30": 0.0, "m31": 0.0, "m32": 0.0, "m33": 1.0
-            }
-            bind_poses_list.append(bind_pose)
-
-        skeleton_data = {
-            "bones": bone_data_list,
-            "bindPoses": bind_poses_list
-        }
         skeleton_json_path = os.path.join(self.output_dir, "skeleton_data.json")
         with open(skeleton_json_path, "w") as f:
             json.dump(skeleton_data, f, indent=2)
@@ -404,7 +595,6 @@ public class CharacterImporter : MonoBehaviour
     public class SkeletonData
     {
         public List<BoneData> bones;
-        public List<BindPoseData> bindPoses;
     }
 
     [System.Serializable]
@@ -422,15 +612,6 @@ public class CharacterImporter : MonoBehaviour
         public float x;
         public float y;
         public float z;
-    }
-
-    [System.Serializable]
-    public class BindPoseData
-    {
-        public float m00, m01, m02, m03;
-        public float m10, m11, m12, m13;
-        public float m20, m21, m22, m23;
-        public float m30, m31, m32, m33;
     }
 
     public Texture2D characterTexture;
@@ -460,30 +641,38 @@ public class CharacterImporter : MonoBehaviour
         foreach (var boneData in skeletonData.bones)
         {
             GameObject boneObj = new GameObject(boneData.name);
-            boneObj.transform.position = new Vector3(
+            boneObj.transform.SetParent(characterRoot.transform, false);
+            boneObj.transform.localPosition = new Vector3(
                 boneData.localPosition.x,
                 boneData.localPosition.y,
                 boneData.localPosition.z
             );
-            
+
             boneTransforms[boneData.name] = boneObj.transform;
             boneArray[boneData.index] = boneObj.transform;
         }
         
         // Second pass: set up hierarchy
+        Transform rootBone = null;
         foreach (var boneData in skeletonData.bones)
         {
-            if (boneData.parent != null && boneTransforms.ContainsKey(boneData.parent))
+            Transform bone = boneTransforms[boneData.name];
+            if (!string.IsNullOrEmpty(boneData.parent) &&
+                boneTransforms.TryGetValue(boneData.parent, out var parent))
             {
-                boneTransforms[boneData.name].SetParent(boneTransforms[boneData.parent]);
+                bone.SetParent(parent, true); 
             }
             else
             {
-                boneTransforms[boneData.name].SetParent(characterRoot.transform);
+                bone.SetParent(characterRoot.transform, true);
+                rootBone = bone;
             }
-            
-            // Reset local position for proper hierarchy
-            boneTransforms[boneData.name].localPosition = Vector3.zero;
+        }
+        
+        if (rootBone == null)
+        {
+            // fallback: first bone
+            rootBone = boneArray[0];
         }
 
         // Create mesh
@@ -494,11 +683,8 @@ public class CharacterImporter : MonoBehaviour
         Vector3[] vertices = new Vector3[meshData.vertices.Count];
         for (int i = 0; i < meshData.vertices.Count; i++)
         {
-            vertices[i] = new Vector3(
-                meshData.vertices[i][0],
-                meshData.vertices[i][1],
-                0
-            );
+            var v = meshData.vertices[i];
+            vertices[i] = new Vector3(v[0], v[1], 0f);
         }
         mesh.vertices = vertices;
         
@@ -535,40 +721,33 @@ public class CharacterImporter : MonoBehaviour
             boneWeights[i].weight3 = bw.weight3;
         }
         mesh.boneWeights = boneWeights;
-        
-        // Set bind poses
-        Matrix4x4[] bindPoses = new Matrix4x4[skeletonData.bindPoses.Count];
-        for (int i = 0; i < skeletonData.bindPoses.Count; i++)
-        {
-            var bp = skeletonData.bindPoses[i];
-            bindPoses[i] = new Matrix4x4();
-            bindPoses[i].m00 = bp.m00; bindPoses[i].m01 = bp.m01; bindPoses[i].m02 = bp.m02; bindPoses[i].m03 = bp.m03;
-            bindPoses[i].m10 = bp.m10; bindPoses[i].m11 = bp.m11; bindPoses[i].m12 = bp.m12; bindPoses[i].m13 = bp.m13;
-            bindPoses[i].m20 = bp.m20; bindPoses[i].m21 = bp.m21; bindPoses[i].m22 = bp.m22; bindPoses[i].m23 = bp.m23;
-            bindPoses[i].m30 = bp.m30; bindPoses[i].m31 = bp.m31; bindPoses[i].m32 = bp.m32; bindPoses[i].m33 = bp.m33;
-        }
-        mesh.bindposes = bindPoses;
-        
-        mesh.RecalculateNormals();
-        mesh.RecalculateBounds();
 
-        // Create SkinnedMeshRenderer
+        //set bind poses
         GameObject meshObj = new GameObject("SkinnedMesh");
-        meshObj.transform.SetParent(characterRoot.transform);
+        meshObj.transform.SetParent(characterRoot.transform, false);
         meshObj.transform.localPosition = Vector3.zero;
-        
+
         SkinnedMeshRenderer skinnedRenderer = meshObj.AddComponent<SkinnedMeshRenderer>();
         skinnedRenderer.sharedMesh = mesh;
         skinnedRenderer.bones = boneArray;
-        skinnedRenderer.rootBone = boneArray[0];
-        
-        // Create and assign material
-        Material material = new Material(Shader.Find("Sprites/Default"));
-        material.mainTexture = characterTexture;
-        skinnedRenderer.material = material;
-        
-        // Set proper rendering
+        skinnedRenderer.rootBone = rootBone;
         skinnedRenderer.updateWhenOffscreen = true;
+
+        Matrix4x4[] bindPoses = new Matrix4x4[boneArray.Length];
+        Transform rendererTransform = meshObj.transform;
+        for (int i = 0; i < boneArray.Length; i++)
+        {
+            bindPoses[i] = boneArray[i].worldToLocalMatrix * rendererTransform.localToWorldMatrix;
+        }
+        mesh.bindposes = bindPoses;
+
+        // 7) Material
+        Material mat = new Material(Shader.Find("Sprites/Default"));
+        mat.mainTexture = characterTexture;
+        skinnedRenderer.material = mat;
+
+        mesh.RecalculateBounds();
+        mesh.RecalculateNormals();
 
         Debug.Log("Success: Character imported successfully with full skinned mesh!");
         Debug.Log($"  - {vertices.Length} vertices");
@@ -577,7 +756,6 @@ public class CharacterImporter : MonoBehaviour
         Debug.Log($"  - Skinning enabled: bones will deform mesh!");
     }
 }
-
 '''
         
         script_path = output_path / "CharacterImporter.cs"
@@ -591,7 +769,7 @@ public class CharacterImporter : MonoBehaviour
         print("  HYBRID AUTO-RIGGER PIPELINE (Unity-Export) ".center(70, "="))
         print("=" * 70)
 
-        print("\n[1/5] Detecting pose with YOLO...")
+        print("\n[1/5] Detecting pose with SimpleBaseline...")
         if not self.detect_pose():
             print("Error: Pose not detected. Aborting.")
             return False
@@ -613,6 +791,8 @@ public class CharacterImporter : MonoBehaviour
         except Exception as e:
             print(f"Error: Mesh generation failed: {e}")
             return False
+
+        points = np.asarray(points, dtype=float)
 
         print("\n[5/5] Calculating bone weights and exporting files...")
         bones = self.get_bones_for_export()
@@ -676,7 +856,7 @@ public class CharacterImporter : MonoBehaviour
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Hybrid Auto-Rigger: YOLO pose detection + shapely mesh for Unity/GLB"
+        description="Hybrid Auto-Rigger: SimpleBaseline pose detection + shapely mesh for Unity/GLB"
     )
     parser.add_argument("--input", required=True, help="Input character drawing (PNG/JPG)")
     parser.add_argument("--output", required=True, help="Output directory")
@@ -684,7 +864,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        rigger = CharacterExtractorYOLO(
+        rigger = CharacterExtractorSimpleBaseline(
             image_path=args.input,
             output_dir=args.output,
             falloff=args.falloff
