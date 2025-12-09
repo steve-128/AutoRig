@@ -480,12 +480,91 @@ class CharacterExtractorSimpleBaseline:
         print(f"Success: Generated mesh: {len(vertices)} vertices, {len(triangles)} triangles")
         return vertices, triangles
 
+    # def save_unity_json_files(self, points, simplices, uv_coords, bones, weights):
+    #     # 0) Make sure points is an array
+    #     points = np.asarray(points, dtype=float)
+
+    #     # 1) Flip Y for geometry & bones to go from image coords (y down)
+    #     #    to Unity coords (y up). UVs are NOT touched.
+    #     points_flipped = points.copy()
+    #     points_flipped[:, 1] = -points_flipped[:, 1]
+
+    #     bones_flipped = []
+    #     for b in bones:
+    #         bf = dict(b)
+    #         bf["y"] = -float(bf["y"])
+    #         bones_flipped.append(bf)
+
+    #     # 1) Center points & bones around the root **only for geometry**
+    #     points_centered, bones_centered = center_points_and_bones(points_flipped, bones_flipped)
+
+    #     # 2) Build mesh_data.json from centered geometry
+    #     vertices = [[float(p[0]), float(p[1]), 0.0] for p in points_centered]
+    #     triangles = [[int(t[0]), int(t[1]), int(t[2])] for t in simplices]
+    #     uvs = [[float(u), float(v)] for (u, v) in uv_coords]  # UVs stay as given
+
+    #     bone_name_to_index = {b["name"]: i for i, b in enumerate(bones_centered)}
+
+    #     bone_weights_list = []
+    #     for vw in weights:
+    #         idxs = [bone_name_to_index[name] for (name, _) in vw]
+    #         ws = [w for (_, w) in vw]
+
+    #         # pad to 4
+    #         while len(idxs) < 4:
+    #             idxs.append(0)
+    #             ws.append(0.0)
+
+    #         s = sum(ws)
+    #         if s > 0:
+    #             ws = [w / s for w in ws]
+
+    #         bone_weights_list.append({
+    #             "boneIndex0": int(idxs[0]),
+    #             "boneIndex1": int(idxs[1]),
+    #             "boneIndex2": int(idxs[2]),
+    #             "boneIndex3": int(idxs[3]),
+    #             "weight0": float(ws[0]),
+    #             "weight1": float(ws[1]),
+    #             "weight2": float(ws[2]),
+    #             "weight3": float(ws[3]),
+    #         })
+
+    #     mesh_data = {
+    #         "vertices": vertices,
+    #         "triangles": triangles,
+    #         "uvs": uvs,
+    #         "boneWeights": bone_weights_list,
+    #     }
+    #     bones_out = []
+    #     for i, b in enumerate(bones_centered):
+    #         bones_out.append({
+    #             "name": b["name"],
+    #             "parent": b.get("parent"),
+    #             "index": i,
+    #             "localPosition": {"x": float(b["x"]), "y": float(b["y"]), "z": 0.0},
+    #         })
+
+    #     skeleton_data = {
+    #         "bones": bones_out,
+    #         "bindPoses": [],
+    #     }
+
+    #     mesh_json_path = os.path.join(self.output_dir, "mesh_data.json")
+    #     with open(mesh_json_path, "w") as f:
+    #         json.dump(mesh_data, f, indent=2)
+    #     print(f"Success: Saved MeshData JSON: {mesh_json_path}")
+
+    #     skeleton_json_path = os.path.join(self.output_dir, "skeleton_data.json")
+    #     with open(skeleton_json_path, "w") as f:
+    #         json.dump(skeleton_data, f, indent=2)
+    #     print(f"Success: Saved SkeletonData JSON: {skeleton_json_path}")
+
     def save_unity_json_files(self, points, simplices, uv_coords, bones, weights):
         # 0) Make sure points is an array
         points = np.asarray(points, dtype=float)
 
-        # 1) Flip Y for geometry & bones to go from image coords (y down)
-        #    to Unity coords (y up). UVs are NOT touched.
+        # 1) Flip Y for geometry & bones (image coords -> Unity coords)
         points_flipped = points.copy()
         points_flipped[:, 1] = -points_flipped[:, 1]
 
@@ -495,22 +574,21 @@ class CharacterExtractorSimpleBaseline:
             bf["y"] = -float(bf["y"])
             bones_flipped.append(bf)
 
-        # 1) Center points & bones around the root **only for geometry**
+        # 1) Center points & bones around root (only for geometry)
         points_centered, bones_centered = center_points_and_bones(points_flipped, bones_flipped)
 
-        # 2) Build mesh_data.json from centered geometry
+        # 2) Mesh data
         vertices = [[float(p[0]), float(p[1]), 0.0] for p in points_centered]
         triangles = [[int(t[0]), int(t[1]), int(t[2])] for t in simplices]
-        uvs = [[float(u), float(v)] for (u, v) in uv_coords]  # UVs stay as given
+        uvs = [[float(u), float(v)] for (u, v) in uv_coords]
 
         bone_name_to_index = {b["name"]: i for i, b in enumerate(bones_centered)}
 
         bone_weights_list = []
         for vw in weights:
             idxs = [bone_name_to_index[name] for (name, _) in vw]
-            ws = [w for (_, w) in vw]
-
-            # pad to 4
+            ws   = [w for (_, w) in vw]
+            
             while len(idxs) < 4:
                 idxs.append(0)
                 ws.append(0.0)
@@ -536,6 +614,7 @@ class CharacterExtractorSimpleBaseline:
             "uvs": uvs,
             "boneWeights": bone_weights_list,
         }
+
         bones_out = []
         for i, b in enumerate(bones_centered):
             bones_out.append({
@@ -545,10 +624,7 @@ class CharacterExtractorSimpleBaseline:
                 "localPosition": {"x": float(b["x"]), "y": float(b["y"]), "z": 0.0},
             })
 
-        skeleton_data = {
-            "bones": bones_out,
-            "bindPoses": [],
-        }
+        skeleton_data = {"bones": bones_out, "bindPoses": []}
 
         mesh_json_path = os.path.join(self.output_dir, "mesh_data.json")
         with open(mesh_json_path, "w") as f:

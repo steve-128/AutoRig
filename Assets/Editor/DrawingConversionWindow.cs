@@ -450,6 +450,7 @@ public class GenAIPipelineWindow : EditorWindow
         importer.characterTexture  = tex;
         importer.meshDataFile      = meshJson;
         importer.skeletonDataFile  = skelJson;
+        importer.addAnimator       = true;
 
         // Build the character (editor-safe entry point)
         importer.ImportCharacterFromEditor();
