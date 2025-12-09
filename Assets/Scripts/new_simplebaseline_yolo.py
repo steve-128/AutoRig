@@ -599,10 +599,10 @@ Examples:
     run_pipeline(args.image_path, face_method=args.face_method)
 
     # No face refinement (fastest)
-    # python3 simplebaseline_pipeline.py data/creature15.png
+    # python simplebaseline_pipeline.py data/creature15.png
 
     # SimpleBaseline crop for face (medium)
-    # python3 simplebaseline_pipeline.py data/creature15.png --face-method simplebaseline
+    # python simplebaseline_pipeline.py data/creature15.png --face-method simplebaseline
 
     # YOLO for face detection (most accurate if YOLO detects face well)
-    # python3 simplebaseline_pipeline.py data/creature20.png --face-method yolo
+    # python simplebaseline_pipeline.py data/creature20.png --face-method yolo
