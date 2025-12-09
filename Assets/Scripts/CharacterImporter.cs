@@ -61,13 +61,21 @@ public class CharacterImporter : MonoBehaviour
 
     [Header("Runtime options")]
     public bool importOnStart = false;
-    private static GameObject currentCharacterRoot;
 
     [Header("BVH / Animation options")]
     public TextAsset bvhFile;
     public string bvhFilePath;
     public bool addAnimator = true;
     public float bvhScale = 0.025f;
+
+    void Start()
+    {
+        // Optional: only auto-import when playing, and only if you want it
+        if (importOnStart && Application.isPlaying)
+        {
+            ImportCharacterRuntime();
+        }
+    }
 
     private static void CleanupAllGeneratedCharacters()
     {
@@ -87,15 +95,6 @@ public class CharacterImporter : MonoBehaviour
         }
     }
 
-    void Start()
-    {
-        // Optional: only auto-import when playing, and only if you want it
-        if (importOnStart && Application.isPlaying)
-        {
-            ImportCharacterRuntime();
-        }
-    }
-
     public GameObject ImportCharacterRuntime()
     {
         return ImportInternal(inEditor: false);
@@ -106,9 +105,10 @@ public class CharacterImporter : MonoBehaviour
         return ImportInternal(inEditor: true);
     }
 
+    private GameObject currentCharacterRoot;
     private GameObject ImportInternal(bool inEditor)
     {
-        CleanupAllGeneratedCharacters();
+        // CleanupAllGeneratedCharacters();
         if (meshDataFile == null || skeletonDataFile == null || characterTexture == null)
         {
             Debug.LogError("CharacterImporter: meshDataFile, skeletonDataFile, or characterTexture is missing.");
@@ -118,6 +118,8 @@ public class CharacterImporter : MonoBehaviour
         // Remove old character if it exists
         if (currentCharacterRoot != null)
         {
+            Debug.Log($"[CharacterImporter] Destroying old character: {currentCharacterRoot.name}");
+
             if (inEditor || !Application.isPlaying)
                 DestroyImmediate(currentCharacterRoot);
             else

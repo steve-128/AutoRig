@@ -1,0 +1,215 @@
+{
+  "bones": [
+    {
+      "name": "root",
+      "parent": null,
+      "index": 0,
+      "localPosition": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "hip",
+      "parent": "root",
+      "index": 1,
+      "localPosition": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "torso",
+      "parent": "hip",
+      "index": 2,
+      "localPosition": {
+        "x": 13.0,
+        "y": 182.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "neck",
+      "parent": "torso",
+      "index": 3,
+      "localPosition": {
+        "x": -14.0,
+        "y": 300.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "left_eye",
+      "parent": "neck",
+      "index": 4,
+      "localPosition": {
+        "x": 20.0,
+        "y": 324.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "right_eye",
+      "parent": "neck",
+      "index": 5,
+      "localPosition": {
+        "x": -55.0,
+        "y": 335.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "nose",
+      "parent": "neck",
+      "index": 6,
+      "localPosition": {
+        "x": -14.0,
+        "y": 300.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "face_left",
+      "parent": "neck",
+      "index": 7,
+      "localPosition": {
+        "x": 61.0,
+        "y": 277.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "face_right",
+      "parent": "neck",
+      "index": 8,
+      "localPosition": {
+        "x": -68.0,
+        "y": 335.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "left_shoulder",
+      "parent": "torso",
+      "index": 9,
+      "localPosition": {
+        "x": 104.0,
+        "y": 182.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "left_elbow",
+      "parent": "left_shoulder",
+      "index": 10,
+      "localPosition": {
+        "x": 260.0,
+        "y": 143.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "left_hand",
+      "parent": "left_elbow",
+      "index": 11,
+      "localPosition": {
+        "x": 390.0,
+        "y": 156.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "right_shoulder",
+      "parent": "torso",
+      "index": 12,
+      "localPosition": {
+        "x": -78.0,
+        "y": 182.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "right_elbow",
+      "parent": "right_shoulder",
+      "index": 13,
+      "localPosition": {
+        "x": -234.0,
+        "y": 143.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "right_hand",
+      "parent": "right_elbow",
+      "index": 14,
+      "localPosition": {
+        "x": -390.0,
+        "y": 143.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "left_hip",
+      "parent": "root",
+      "index": 15,
+      "localPosition": {
+        "x": 78.0,
+        "y": 0.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "left_knee",
+      "parent": "left_hip",
+      "index": 16,
+      "localPosition": {
+        "x": 104.0,
+        "y": -130.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "left_foot",
+      "parent": "left_knee",
+      "index": 17,
+      "localPosition": {
+        "x": 104.0,
+        "y": -208.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "right_hip",
+      "parent": "root",
+      "index": 18,
+      "localPosition": {
+        "x": -78.0,
+        "y": 0.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "right_knee",
+      "parent": "right_hip",
+      "index": 19,
+      "localPosition": {
+        "x": -130.0,
+        "y": -104.0,
+        "z": 0.0
+      }
+    },
+    {
+      "name": "right_foot",
+      "parent": "right_knee",
+      "index": 20,
+      "localPosition": {
+        "x": -104.0,
+        "y": -221.0,
+        "z": 0.0
+      }
+    }
+  ],
+  "bindPoses": []
+}
