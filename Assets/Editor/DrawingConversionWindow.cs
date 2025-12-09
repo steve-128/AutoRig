@@ -237,12 +237,24 @@ public class GenAIPipelineWindow : EditorWindow
             string fileName;
             string arguments;
 
+            string pythonPath = PythonLocator.DetectPythonForEnv(condaEnvName);
+            if (string.IsNullOrEmpty(pythonPath))
+            {
+                Debug.LogError($"[GenAI] Could not auto-detect python for env '{condaEnvName}'. " +
+                            "Check your Conda install or set a manual path.");
+                return;
+            } 
+            else
+            {
+                Debug.Log($"[GenAI] Detected python at: {pythonPath}");
+            }
+
             if (Application.platform == RuntimePlatform.WindowsEditor)
             {
                 // Use cmd.exe on Windows
-                fileName = "cmd.exe";
+                fileName = pythonPath;
                 arguments =
-                    $"/C conda run -n {condaEnvName} python -u \"{scriptPath}\" " +
+                    $" -u \"{scriptPath}\" " +
                     $"--input \"{inputImage}\" --output \"{outputFolder}\" --falloff 40.0";
             }
             else if (Application.platform == RuntimePlatform.OSXEditor)
@@ -250,7 +262,7 @@ public class GenAIPipelineWindow : EditorWindow
                 // Use bash -lc on macOS so it loads conda from your shell init
                 fileName = "/bin/bash";
                 arguments =
-                    $"-lc \"conda run -n {condaEnvName} python -u '{scriptPath}' " +
+                    $"-lc \"'{pythonPath}' -u '{scriptPath}' " +
                     $"--input '{inputImage}' --output '{outputFolder}' --falloff 40.0\"";
             }
             else
@@ -445,213 +457,6 @@ public class GenAIPipelineWindow : EditorWindow
         Debug.Log("[NewRigger] Successfully spawned 3D character from exported JSON.");
     }
 
-        // if (File.Exists(meshDataPath) && File.Exists(skeletonDataPath))
-        // {
-        //     Debug.Log("3D mesh data found, importing character...");
-        //     GameObject character = CharacterImporter.ImportCharacter(jobRoot, jobName);
-            
-        //     if (character != null)
-        //     {
-        //         Camera sceneCamera = Camera.main;
-        //         if (sceneCamera != null)
-        //         {
-        //             character.transform.position = sceneCamera.transform.position + sceneCamera.transform.forward * 5f;
-        //             character.transform.rotation = Quaternion.Euler(0, 180, 0);
-        //         }
-        //         character.transform.localScale = character.transform.localScale * 2.0f;
-                
-        //         Selection.activeGameObject = character;
-        //         SceneView.lastActiveSceneView?.FrameSelected();
-                
-        //         Debug.Log($"✅ Successfully spawned 3D character: {jobName}");
-        //         return;
-        //     }
-        // }
-        // else
-        // {
-        //     Debug.Log("No 3D data, showing 2D preview");
-        // }
-
-    //     string outputFolder = Path.Combine(jobRoot, "Output");
-    //     string[] possibleFiles = new string[]
-    //     {
-    //         Path.Combine(outputFolder, jobName + "_refined.png"),
-    //         Path.Combine(outputFolder, jobName + "_refined"),
-    //         Path.Combine(outputFolder, jobName + ".png"),
-    //         Path.Combine(outputFolder, "output.png"),
-    //         Path.Combine(outputFolder, "refined.png")
-    //     };
-
-    //     string outputPath = null;
-    //     foreach(var file in possibleFiles)
-    //     {
-    //         if(File.Exists(file))
-    //         {
-    //             outputPath = file;
-    //             break;
-    //         }
-    //     }
-
-    //     // if we didn't find anything just grab the first png
-    //     if(outputPath == null && Directory.Exists(outputFolder))
-    //     {
-    //         var pngFiles = Directory.GetFiles(outputFolder, "*.png");
-    //         if(pngFiles.Length > 0)
-    //             outputPath = pngFiles[0];
-    //     }
-
-    //     if(outputPath == null || !File.Exists(outputPath))
-    //     {
-    //         Debug.LogError("couldn't find output image in Output folder");
-    //         return;
-    //     }
-
-    //     // find input image too
-    //     string inputFolder = Path.Combine(jobRoot, "Input");
-    //     string inputPath = null;
-    //     if(Directory.Exists(inputFolder))
-    //     {
-    //         var inputFiles = Directory.GetFiles(inputFolder, "*.png")
-    //             .Concat(Directory.GetFiles(inputFolder, "*.jpg"))
-    //             .Concat(Directory.GetFiles(inputFolder, "*.jpeg"))
-    //             .ToArray();
-    //         if(inputFiles.Length > 0)
-    //             inputPath = inputFiles[0];
-    //     }
-
-    //     AssetDatabase.Refresh();
-
-    //     // convert paths to unity format
-    //     string projectRoot = Application.dataPath.Substring(0, Application.dataPath.Length - "/Assets".Length);
-    //     string outputRelativePath = outputPath.Replace(projectRoot + "/", "").Replace("\\", "/");
-
-    //     AssetDatabase.ImportAsset(outputRelativePath, ImportAssetOptions.ForceUpdate);
-        
-    //     // set npot scale to none so aspect ratio is preserved
-    //     TextureImporter outputImporter = AssetImporter.GetAtPath(outputRelativePath) as TextureImporter;
-    //     if(outputImporter != null)
-    //     {
-    //         outputImporter.npotScale = TextureImporterNPOTScale.None;
-    //         outputImporter.SaveAndReimport();
-    //     }
-        
-    //     Texture2D outputTex = AssetDatabase.LoadAssetAtPath<Texture2D>(outputRelativePath);
-
-    //     if(outputTex == null)
-    //     {
-    //         Debug.LogError($"failed to load texture from {outputRelativePath}");
-    //         return;
-    //     }
-
-    //     // load input texture
-    //     Texture2D inputTex = null;
-    //     if(inputPath != null)
-    //     {
-    //         string inputRelativePath = inputPath.Replace(projectRoot + "/", "").Replace("\\", "/");
-    //         AssetDatabase.ImportAsset(inputRelativePath, ImportAssetOptions.ForceUpdate);
-            
-    //         TextureImporter inputImporter = AssetImporter.GetAtPath(inputRelativePath) as TextureImporter;
-    //         if(inputImporter != null)
-    //         {
-    //             inputImporter.npotScale = TextureImporterNPOTScale.None;
-    //             inputImporter.SaveAndReimport();
-    //         }
-            
-    //         inputTex = AssetDatabase.LoadAssetAtPath<Texture2D>(inputRelativePath);
-    //     }
-
-    //     // clean up old preview quads
-    //     var oldPreviews = FindObjectsByType<GameObject>(FindObjectsSortMode.None)
-    //         .Where(go => go.name.Contains("_RefinedPreview") || go.name.Contains("_Preview") || go.name.Contains("_InputPreview"))
-    //         .ToArray();
-        
-    //     foreach(var old in oldPreviews)
-    //         DestroyImmediate(old);
-
-    //     // spawn main output quad
-    //     GameObject outputQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-    //     outputQuad.name = jobName + "_RefinedPreview";
-
-    //     // URP-friendly shader for 2D quad
-    //     Shader outShader = Shader.Find("Universal Render Pipeline/Unlit");
-    //     if (outShader == null)
-    //         outShader = Shader.Find("Universal Render Pipeline/Lit");
-    //     if (outShader == null)
-    //         outShader = Shader.Find("Sprites/Default");
-
-    //     Material outputMat = new Material(outShader);
-    //     if (outputMat.HasProperty("_BaseMap"))
-    //         outputMat.SetTexture("_BaseMap", outputTex);
-    //     else
-    //         outputMat.mainTexture = outputTex;
-
-    //     outputQuad.GetComponent<MeshRenderer>().sharedMaterial = outputMat;
-
-
-    //     Camera mainCam = Camera.main;
-    //     if(mainCam != null)
-    //     {
-    //         float distance = 10f;
-    //         float height = 2f * distance * Mathf.Tan(mainCam.fieldOfView * 0.5f * Mathf.Deg2Rad);
-    //         float width = height * mainCam.aspect;
-
-    //         outputQuad.transform.localScale = new Vector3(width, height, 2f);
-    //         outputQuad.transform.position = mainCam.transform.position + mainCam.transform.forward * distance;
-    //         outputQuad.transform.rotation = mainCam.transform.rotation;
-
-    //         // spawn input preview in corner
-    //         if(inputTex != null)
-    //         {
-    //             GameObject inputQuad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-    //             inputQuad.name = jobName + "_InputPreview";
-
-    //             Shader inShader = Shader.Find("Universal Render Pipeline/Unlit");
-    //             if (inShader == null)
-    //                 inShader = Shader.Find("Universal Render Pipeline/Lit");
-    //             if (inShader == null)
-    //                 inShader = Shader.Find("Sprites/Default");
-
-    //             Material inputMat = new Material(inShader);
-    //             if (inputMat.HasProperty("_BaseMap"))
-    //                 inputMat.SetTexture("_BaseMap", inputTex);
-    //             else
-    //                 inputMat.mainTexture = inputTex;
-
-    //             inputQuad.GetComponent<MeshRenderer>().sharedMaterial = inputMat;
-
-    //             float inputAspect = (float)inputTex.width / inputTex.height;
-    //             float inputWidth = width * 0.2f;
-    //             float inputHeight = inputWidth / inputAspect;
-                
-    //             inputQuad.transform.localScale = new Vector3(inputWidth, inputHeight, 1f);
-                
-    //             // position in top right
-    //             float xOffset = (width * 0.5f) - (inputWidth * 0.5f) - 0.3f;
-    //             float yOffset = (height * 0.5f) - (inputHeight * 0.5f) - 0.3f;
-                
-    //             Vector3 topRightOffset = mainCam.transform.right * xOffset + mainCam.transform.up * yOffset;
-                
-    //             inputQuad.transform.position = outputQuad.transform.position + topRightOffset;
-    //             inputQuad.transform.position -= mainCam.transform.forward * 0.1f;
-    //             inputQuad.transform.rotation = mainCam.transform.rotation;
-    //         }
-    //     }
-    //     else
-    //     {
-    //         // no camera found, just place it somewhere
-    //         float height = 10f;
-    //         float aspect = (float)outputTex.width / outputTex.height;
-    //         outputQuad.transform.localScale = new Vector3(aspect * height, height, 1f);
-    //         outputQuad.transform.position = new Vector3(0f, 0f, 10f);
-    //         outputQuad.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
-    //     }
-        
-    //     Selection.activeGameObject = outputQuad;
-    //     SceneView.lastActiveSceneView?.FrameSelected();
-        
-    //     Debug.Log($"spawned output image preview");
-    // }
-
     private void CreateFolders(string jobName)
     {
         EnsureFolder("Assets", "GenAI");
@@ -736,12 +541,24 @@ public class GenAIPipelineWindow : EditorWindow
         string fileName;
         string arguments;
 
+        string pythonPath = PythonLocator.DetectPythonForEnv(condaEnvName);
+        if (string.IsNullOrEmpty(pythonPath))
+        {
+            Debug.LogError($"[GenAI] Could not auto-detect python for env '{condaEnvName}'. " +
+                        "Check your Conda install or set a manual path.");
+            return;
+        } 
+        else
+        {
+            Debug.Log($"[GenAI] Detected python at: {pythonPath}");
+        }
+
         if (Application.platform == RuntimePlatform.WindowsEditor)
         {
             // Use cmd.exe on Windows
-            fileName  = "cmd.exe";
+            fileName  = pythonPath;
             arguments =
-                $"/C conda run -n {condaEnvName} python -u \"{qwenRunnerPath}\" " +
+                $"-u \"{qwenRunnerPath}\" " +
                 $"--root \"{absRoot}\" --image \"{absImage}\" --job \"{jobName}\"";
         }
         else if (Application.platform == RuntimePlatform.OSXEditor)
@@ -749,7 +566,7 @@ public class GenAIPipelineWindow : EditorWindow
             // Use bash -lc on macOS so it loads conda from your shell init
             fileName  = "/bin/bash";
             arguments =
-                $"-lc \"conda run -n {condaEnvName} python -u '{qwenRunnerPath}' " +
+                $"-lc \"'{pythonPath}' -u '{qwenRunnerPath}' " +
                 $"--root '{absRoot}' --image '{absImage}' --job '{jobName}'\"";
         }
         else

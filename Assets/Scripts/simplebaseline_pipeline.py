@@ -184,7 +184,7 @@ def load_pretrained_simplebaseline():
     model.load_state_dict(new_state_dict)
     model.eval()
     
-    print("[INFO] ✓ Successfully loaded pretrained weights!")
+    print("[INFO] Successfully loaded pretrained weights!")
     return model
 
 
@@ -307,7 +307,7 @@ def run_pipeline(image_path):
     # Save original image to output folder
     orig_path = os.path.join(output_folder, "01_original.png")
     cv2.imwrite(orig_path, orig)
-    print(f"[INFO] ✓ Saved original image to {orig_path}")
+    print(f"[INFO] Saved original image to {orig_path}")
     
     #########################################
     # Preprocess image (resize to 192x256)
@@ -366,7 +366,7 @@ def run_pipeline(image_path):
             
             # Replace first 5 keypoints (face) with refined versions
             final_kpts[:5] = refined_face
-            print("[INFO] ✓ Face keypoints refined!")
+            print("[INFO] Face keypoints refined!")
             
             # Save face crop with bounding box
             x1, y1, x2, y2 = crop_coords
@@ -377,12 +377,12 @@ def run_pipeline(image_path):
             
             face_region_path = os.path.join(output_folder, "05_face_crop_region.png")
             cv2.imwrite(face_region_path, face_region_img)
-            print(f"[INFO] ✓ Saved face crop region to {face_region_path}")
+            print(f"[INFO] Saved face crop region to {face_region_path}")
             
             # Save the actual face crop
             face_crop_path = os.path.join(output_folder, "06_face_crop.png")
             cv2.imwrite(face_crop_path, face_crop)
-            print(f"[INFO] ✓ Saved face crop to {face_crop_path}")
+            print(f"[INFO] Saved face crop to {face_crop_path}")
         else:
             print("[WARN] Face refinement failed, using original face keypoints")
     except Exception as e:
@@ -399,7 +399,7 @@ def run_pipeline(image_path):
     
     skel_path = os.path.join(output_folder, "02_skeleton_overlay.png")
     cv2.imwrite(skel_path, skel_img)
-    print(f"[INFO] ✓ Saved skeleton overlay to {skel_path}")
+    print(f"[INFO] Saved skeleton overlay to {skel_path}")
     
     #########################################
     # Save keypoints visualization (just dots, no lines)
@@ -419,20 +419,20 @@ def run_pipeline(image_path):
     
     keypoints_path = os.path.join(output_folder, "03_keypoints_only.png")
     cv2.imwrite(keypoints_path, keypoints_img)
-    print(f"[INFO] ✓ Saved keypoints visualization to {keypoints_path}")
+    print(f"[INFO] Saved keypoints visualization to {keypoints_path}")
     
     #########################################
     # Save YAML 
     #########################################
     yaml_path = os.path.join(output_folder, "04_pose.yaml")
     save_yaml(final_kpts, yaml_path)
-    print(f"[INFO] ✓ Saved YAML to {yaml_path}")
+    print(f"[INFO] Saved YAML to {yaml_path}")
     
     #########################################
     # Summary
     #########################################
     print(f"\n{'='*60}")
-    print(f"[INFO] ✓ Pipeline complete!")
+    print(f"[INFO] Pipeline complete!")
     print(f"[INFO] All outputs saved to: {output_folder}")
     print(f"{'='*60}\n")
     
