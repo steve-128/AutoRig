@@ -269,7 +269,7 @@ class CharacterExtractorSimpleBaseline:
                 refined_face_kpts, _, _ = refinement_result
                 # Replace the first 5 (face) keypoints
                 final_kpts[:5] = refined_face_kpts
-                print("[INFO] ✓ Face keypoints refined by SimpleBaseline.")
+                print("[INFO] Face keypoints refined by SimpleBaseline.")
             else:
                 print("[WARN] Face refinement skipped; using original face keypoints.")
         except Exception as e:

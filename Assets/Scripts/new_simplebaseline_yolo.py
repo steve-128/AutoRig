@@ -211,7 +211,7 @@ def load_pretrained_simplebaseline():
     model.load_state_dict(new_state_dict)
     model.eval()
     
-    print("[INFO] ✓ Successfully loaded pretrained weights!")
+    print("[INFO] Successfully loaded pretrained weights!")
     return model
 
 
@@ -322,7 +322,7 @@ def improve_face_yolo_pose(orig, output_folder):
         x, y = yolo_kpts[i]
         yolo_face_kpts.append((int(x), int(y)))
     
-    print(f"[INFO] ✓ YOLO-Pose detected face keypoints:")
+    print(f"[INFO] YOLO-Pose detected face keypoints:")
     for i, name in enumerate(COCO_NAMES[:5]):
         x, y = yolo_face_kpts[i]
         print(f"  {name:15s}: ({x:4d}, {y:4d})")
@@ -357,7 +357,7 @@ def improve_face_yolo_pose(orig, output_folder):
     
     yolo_full_path = os.path.join(output_folder, "05_yolo_full_pose.png")
     cv2.imwrite(yolo_full_path, yolo_vis)
-    print(f"[INFO] ✓ Saved YOLO full pose visualization to {yolo_full_path}")
+    print(f"[INFO] Saved YOLO full pose visualization to {yolo_full_path}")
     
     # Save YOLO face-only visualization
     yolo_face_vis = orig.copy()
@@ -375,7 +375,7 @@ def improve_face_yolo_pose(orig, output_folder):
     
     yolo_face_path = os.path.join(output_folder, "06_yolo_face_only.png")
     cv2.imwrite(yolo_face_path, yolo_face_vis)
-    print(f"[INFO] ✓ Saved YOLO face-only visualization to {yolo_face_path}")
+    print(f"[INFO] Saved YOLO face-only visualization to {yolo_face_path}")
     
     return yolo_face_kpts
 
@@ -426,7 +426,7 @@ def run_pipeline(image_path, face_method='none'):
     # Save original
     orig_save_path = os.path.join(output_folder, "01_original.png")
     cv2.imwrite(orig_save_path, orig)
-    print(f"[INFO] ✓ Saved original image to {orig_save_path}")
+    print(f"[INFO] Saved original image to {orig_save_path}")
     
     #########################################
     # Preprocess image
@@ -474,7 +474,7 @@ def run_pipeline(image_path, face_method='none'):
                 refined_face, face_crop, crop_coords = result
                 final_kpts[:5] = refined_face
                 method_info["face_keypoints"] = "SimpleBaseline (cropped & refined)"
-                print("[INFO] ✓ Face refined with SimpleBaseline!")
+                print("[INFO] Face refined with SimpleBaseline!")
                 
                 # Save visualization
                 x1, y1, x2, y2 = crop_coords
@@ -485,11 +485,11 @@ def run_pipeline(image_path, face_method='none'):
                 
                 face_region_path = os.path.join(output_folder, "05_simplebaseline_face_region.png")
                 cv2.imwrite(face_region_path, face_vis)
-                print(f"[INFO] ✓ Saved face region to {face_region_path}")
+                print(f"[INFO] Saved face region to {face_region_path}")
                 
                 face_crop_path = os.path.join(output_folder, "06_simplebaseline_face_crop.png")
                 cv2.imwrite(face_crop_path, face_crop)
-                print(f"[INFO] ✓ Saved face crop to {face_crop_path}")
+                print(f"[INFO] Saved face crop to {face_crop_path}")
         except Exception as e:
             print(f"[WARN] SimpleBaseline face refinement failed: {e}")
     
@@ -503,7 +503,7 @@ def run_pipeline(image_path, face_method='none'):
                     # Override ONLY face keypoints (0-4) with YOLO results
                     final_kpts[:5] = yolo_face_kpts
                     method_info["face_keypoints"] = "YOLO-Pose"
-                    print(f"[INFO] ✓ Face keypoints replaced with YOLO-Pose results!")
+                    print(f"[INFO] Face keypoints replaced with YOLO-Pose results!")
                     print(f"[INFO] Final face keypoints: {final_kpts[:5]}")
             except Exception as e:
                 print(f"[WARN] YOLO-Pose face refinement failed: {e}")
@@ -522,7 +522,7 @@ def run_pipeline(image_path, face_method='none'):
     
     skel_path = os.path.join(output_folder, "02_skeleton_overlay.png")
     cv2.imwrite(skel_path, skel_img)
-    print(f"[INFO] ✓ Saved skeleton overlay to {skel_path}")
+    print(f"[INFO] Saved skeleton overlay to {skel_path}")
     
     #########################################
     # Draw keypoints with labels
@@ -540,20 +540,20 @@ def run_pipeline(image_path, face_method='none'):
     
     keypoints_path = os.path.join(output_folder, "03_keypoints_labeled.png")
     cv2.imwrite(keypoints_path, keypoints_img)  # FIXED: correct argument order
-    print(f"[INFO] ✓ Saved keypoints visualization to {keypoints_path}")
+    print(f"[INFO] Saved keypoints visualization to {keypoints_path}")
     
     #########################################
     # Save YAML
     #########################################
     yaml_path = os.path.join(output_folder, "04_pose.yaml")
     save_yaml(final_kpts, yaml_path, method_info)
-    print(f"[INFO] ✓ Saved YAML to {yaml_path}")
+    print(f"[INFO] Saved YAML to {yaml_path}")
     
     #########################################
     # Summary
     #########################################
     print(f"\n{'='*60}")
-    print(f"[INFO] ✓ Pipeline complete!")
+    print(f"[INFO] Pipeline complete!")
     print(f"[INFO] Method used:")
     print(f"  - Body: {method_info['body_keypoints']}")
     print(f"  - Face: {method_info['face_keypoints']}")
