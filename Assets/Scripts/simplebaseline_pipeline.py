@@ -8,6 +8,11 @@ from pathlib import Path
 import torch.nn as nn
 from torchvision.models import resnet50
 
+try:
+    from ultralytics import YOLO
+    YOLO_AVAILABLE = True
+except ImportError:
+    YOLO_AVAILABLE = False
 
 #########################################
 # Create output folder
@@ -96,13 +101,25 @@ def get_keypoints_from_heatmaps(heatmaps):
 #########################################
 
 COCO_PAIRS = [
+    # Face connections
+    (0,1),           # nose to left_eye
+    (0,2),           # nose to right_eye
+    (1,3),           # left_eye to left_ear
+    (2,4),           # right_eye to right_ear
+    (1,2),           # left_eye to right_eye
+    
+    # Neck connections (face to body)
+    (0,5),           # nose to left_shoulder
+    (0,6),           # nose to right_shoulder
+    
+    # Body connections
     (5,7),(7,9),     # left arm
     (6,8),(8,10),    # right arm
     (11,13),(13,15), # left leg
     (12,14),(14,16), # right leg
     (5,6),           # shoulders
     (11,12),         # hips
-    (5,11),(6,12)    # torso
+    (5,11),(6,12),   # torso
 ]
 
 COCO_NAMES = [
@@ -111,7 +128,6 @@ COCO_NAMES = [
     "left_wrist","right_wrist","left_hip","right_hip",
     "left_knee","right_knee","left_ankle","right_ankle"
 ]
-
 
 def draw_skeleton(image, kpts):
     """Draw skeleton with keypoints and connections"""
@@ -122,24 +138,31 @@ def draw_skeleton(image, kpts):
         cv2.line(image, (x1, y1), (x2, y2), (0, 255, 0), 3)
 
     # Draw keypoints (circles)
-    for (x, y) in kpts:
-        cv2.circle(image, (x, y), 5, (0, 0, 255), -1)
+    for idx, (x, y) in enumerate(kpts):
+        # Different colors for face vs body
+        if idx < 5:  # Face keypoints
+            cv2.circle(image, (x, y), 6, (255, 0, 255), -1)  # Magenta
+        else:  # Body keypoints
+            cv2.circle(image, (x, y), 5, (0, 0, 255), -1)  # Red
 
     return image
-
 
 #########################################
 # 4. Convert keypoints → YAML
 #########################################
 
-def save_yaml(kpts, filename):
+def save_yaml(kpts, filename, method_info=None):
     data = {"joints": {}}
+    
+    # Add metadata about which method was used
+    if method_info:
+        data["metadata"] = method_info
+    
     for name, (x, y) in zip(COCO_NAMES, kpts):
         data["joints"][name] = [int(x), int(y)]
 
     with open(filename, "w") as f:
-        yaml.dump(data, f)
-
+        yaml.dump(data, f, sort_keys=False)
 
 #########################################
 # 5. Load pretrained weights
@@ -189,53 +212,44 @@ def load_pretrained_simplebaseline():
 
 
 #########################################
-# 6. Face refinement function (NEW!)
+# 6. Face refinement function 
 #########################################
 
-def improve_face_detection(orig, body_kpts, sb_model):
+def improve_face_simplebaseline(orig, body_kpts, sb_model):
     """
-    Crop face region based on body keypoints and re-run at higher resolution
-    This improves accuracy for small face keypoints
+    Crop face region and re-run SimpleBaseline at higher resolution
     """
-    print("[INFO] Refining face keypoints with cropped region...")
+    print("[INFO] Refining face with SimpleBaseline crop...")
     
     # Get key body points
     nose = body_kpts[0]
-    left_eye = body_kpts[1]
-    right_eye = body_kpts[2]
     left_shoulder = body_kpts[5]
     right_shoulder = body_kpts[6]
     
     # Calculate face region size based on shoulder width
     shoulder_width = abs(right_shoulder[0] - left_shoulder[0])
     
-    # If shoulder width is too small or zero, use image width as fallback
     if shoulder_width < 50:
         shoulder_width = orig.shape[1] // 3
     
-    face_size = int(shoulder_width * 1.8)  # Face region size
+    face_size = int(shoulder_width * 1.8)
     
-    # Calculate crop boundaries (centered on nose, extended upward)
+    # Calculate crop boundaries
     x_center = nose[0]
     y_center = nose[1]
     
     x1 = max(0, x_center - face_size // 2)
-    y1 = max(0, y_center - int(face_size * 0.8))  # More space above nose
+    y1 = max(0, y_center - int(face_size * 0.8))
     x2 = min(orig.shape[1], x_center + face_size // 2)
-    y2 = min(orig.shape[0], y_center + int(face_size * 0.4))  # Less space below
+    y2 = min(orig.shape[0], y_center + int(face_size * 0.4))
     
-    # Make sure crop is valid
     if x2 <= x1 or y2 <= y1:
-        print("[WARN] Invalid face crop, skipping refinement")
+        print("[WARN] Invalid face crop")
         return None
     
     face_crop = orig[y1:y2, x1:x2]
     
-    # Save face crop for debugging
-    print(f"[INFO] Face crop region: ({x1}, {y1}) to ({x2}, {y2})")
-    print(f"[INFO] Face crop shape: {face_crop.shape}")
-    
-    # Preprocess face crop
+    # Preprocess
     inp = cv2.resize(face_crop, (192, 256))
     inp_rgb = cv2.cvtColor(inp, cv2.COLOR_BGR2RGB)
     inp_rgb = inp_rgb.astype(np.float32) / 255.0
@@ -248,9 +262,6 @@ def improve_face_detection(orig, body_kpts, sb_model):
     with torch.no_grad():
         face_heatmaps = sb_model(tensor)
     
-    print(f"[INFO] Face heatmaps shape: {face_heatmaps.shape}")
-    
-    # Extract face keypoints (0-4: nose, left_eye, right_eye, left_ear, right_ear)
     face_kpts = get_keypoints_from_heatmaps(face_heatmaps)
     
     # Scale back to original image coordinates
@@ -258,16 +269,107 @@ def improve_face_detection(orig, body_kpts, sb_model):
     crop_h, crop_w = face_crop.shape[:2]
     
     refined_face_kpts = []
-    for i in range(5):  # Only first 5 keypoints (face keypoints)
+    for i in range(5):  # Only first 5 keypoints
         hx, hy = face_kpts[i]
         x = int(hx / hm_W * crop_w) + x1
         y = int(hy / hm_H * crop_h) + y1
         refined_face_kpts.append((x, y))
     
-    print(f"[INFO] Refined face keypoints: {refined_face_kpts}")
-    
     return refined_face_kpts, face_crop, (x1, y1, x2, y2)
 
+
+def improve_face_yolo_pose(orig, output_folder):
+    """
+    Run YOLO-Pose on the FULL image and extract only face keypoints (0-4)
+    """
+    if not YOLO_AVAILABLE:
+        print("[ERROR] YOLO not available. Install with: pip install ultralytics")
+        return None
+    
+    print("[INFO] Running YOLOv8-Pose on full image...")
+    
+    # Load YOLOv8 pose model
+    yolo_pose = YOLO("yolov8n-pose.pt")
+    
+    # Run YOLO-Pose with lower confidence threshold for better detection
+    results = yolo_pose(orig, conf=0.25, verbose=False)
+    
+    if not results or len(results[0].keypoints.data) == 0:
+        print("[WARN] YOLO-Pose detected no keypoints with conf=0.25")
+        print("[INFO] Trying with even lower confidence threshold...")
+        
+        # Try again with very low threshold
+        results = yolo_pose(orig, conf=0.1, verbose=False)
+        
+        if not results or len(results[0].keypoints.data) == 0:
+            print("[WARN] Still no detections. YOLO may not work well for this creature.")
+            return None
+    
+    # Get YOLO keypoints (17 keypoints from full image)
+    yolo_kpts = results[0].keypoints.data[0].cpu().numpy()[:, :2]  # [17, 2]
+    
+    # Extract ONLY face keypoints (0-4)
+    yolo_face_kpts = []
+    for i in range(5):
+        x, y = yolo_kpts[i]
+        yolo_face_kpts.append((int(x), int(y)))
+    
+    print(f"[INFO] YOLO-Pose detected face keypoints:")
+    for i, name in enumerate(COCO_NAMES[:5]):
+        x, y = yolo_face_kpts[i]
+        print(f"  {name:15s}: ({x:4d}, {y:4d})")
+    
+    # Save YOLO full pose visualization (all 17 keypoints)
+    yolo_vis = orig.copy()
+    
+    # Draw all YOLO keypoints in cyan (for reference)
+    for idx, (x, y) in enumerate(yolo_kpts):
+        x, y = int(x), int(y)
+        cv2.circle(yolo_vis, (x, y), 4, (255, 255, 0), -1)  # Cyan
+        cv2.putText(yolo_vis, str(idx), (x+8, y), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+    
+    # Highlight face keypoints in magenta
+    for idx, (x, y) in enumerate(yolo_face_kpts):
+        cv2.circle(yolo_vis, (x, y), 7, (255, 0, 255), -1)  # Magenta (bigger)
+        cv2.putText(yolo_vis, COCO_NAMES[idx], (x+10, y-10), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
+    
+    # Draw YOLO skeleton connections
+    yolo_connections = [
+        (5,7),(7,9),(6,8),(8,10),  # arms
+        (11,13),(13,15),(12,14),(14,16),  # legs
+        (5,6),(11,12),(5,11),(6,12),  # torso
+        (0,1),(0,2),(1,3),(2,4)  # face
+    ]
+    for (i, j) in yolo_connections:
+        x1, y1 = int(yolo_kpts[i][0]), int(yolo_kpts[i][1])
+        x2, y2 = int(yolo_kpts[j][0]), int(yolo_kpts[j][1])
+        cv2.line(yolo_vis, (x1, y1), (x2, y2), (0, 255, 255), 2)  # Yellow lines
+    
+    yolo_full_path = os.path.join(output_folder, "05_yolo_full_pose.png")
+    cv2.imwrite(yolo_full_path, yolo_vis)
+    print(f"[INFO] Saved YOLO full pose visualization to {yolo_full_path}")
+    
+    # Save YOLO face-only visualization
+    yolo_face_vis = orig.copy()
+    for idx, (x, y) in enumerate(yolo_face_kpts):
+        cv2.circle(yolo_face_vis, (x, y), 8, (255, 0, 255), -1)
+        cv2.putText(yolo_face_vis, COCO_NAMES[idx], (x+10, y), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    
+    # Draw face connections
+    face_connections = [(0,1),(0,2),(1,3),(2,4),(1,2)]
+    for (i, j) in face_connections:
+        x1, y1 = yolo_face_kpts[i]
+        x2, y2 = yolo_face_kpts[j]
+        cv2.line(yolo_face_vis, (x1, y1), (x2, y2), (255, 0, 255), 3)
+    
+    yolo_face_path = os.path.join(output_folder, "06_yolo_face_only.png")
+    cv2.imwrite(yolo_face_path, yolo_face_vis)
+    print(f"[INFO] Saved YOLO face-only visualization to {yolo_face_path}")
+    
+    return yolo_face_kpts
 
 #########################################
 # 7. Full pipeline
@@ -359,7 +461,7 @@ def run_pipeline(image_path):
     # FACE REFINEMENT (OPTIONAL)
     #########################################
     try:
-        refinement_result = improve_face_detection(orig, final_kpts, sb)
+        refinement_result = improve_face_simplebaseline(orig, final_kpts, sb)
         
         if refinement_result is not None:
             refined_face, face_crop, crop_coords = refinement_result

@@ -28,9 +28,9 @@ from skimage import color, filters, measure, morphology, util
 from typing import List, Dict, Tuple
 
 from simplebaseline_pipeline import (
+    improve_face_yolo_pose,
     load_pretrained_simplebaseline,
     get_keypoints_from_heatmaps,
-    improve_face_detection,
 )
 # NOTE: PyGLTFLIB imports are no longer needed but kept for minimal change principle.
 # They will not be used in the export_gltf function, which is removed.
@@ -264,12 +264,12 @@ class CharacterExtractorSimpleBaseline:
 
         # Optional face refinement (same logic as simplebaseline_pipeline)
         try:
-            refinement_result = improve_face_detection(orig, final_kpts, self.sb_model)
+            refinement_result =  improve_face_yolo_pose(orig, self.output_dir)
             if refinement_result is not None:
                 refined_face_kpts, _, _ = refinement_result
                 # Replace the first 5 (face) keypoints
                 final_kpts[:5] = refined_face_kpts
-                print("[INFO] Face keypoints refined by SimpleBaseline.")
+                print("[INFO] Face keypoints refined by YOLO.")
             else:
                 print("[WARN] Face refinement skipped; using original face keypoints.")
         except Exception as e:
