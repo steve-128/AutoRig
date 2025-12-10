@@ -38,7 +38,7 @@ public class GenAIPipelineWindow : EditorWindow
     private void OnGUI()
     {
         EditorGUILayout.Space(6);
-        EditorGUILayout.LabelField("<b>Qwen Image to 3D Pipeline</b>", RichCenter());
+        EditorGUILayout.LabelField("<b>Auto Rigging Pipeline</b>", RichCenter());
         EditorGUILayout.Space(8);
 
         asset = (GenAIPipelineAsset)EditorGUILayout.ObjectField("Pipeline Asset", asset, typeof(GenAIPipelineAsset), false);
@@ -162,13 +162,9 @@ public class GenAIPipelineWindow : EditorWindow
 
     private void DrawRunSection()
     {
-        Header("3) Run Qwen Pipeline");
+        Header("3) Run Image Generation Pipeline");
         using(new EditorGUILayout.VerticalScope("box"))
         {
-            EditorGUILayout.LabelField("Qwen Runner Path:", EditorStyles.boldLabel);
-            qwenRunnerPath = EditorGUILayout.TextField(qwenRunnerPath);
-            
-            EditorGUILayout.Space(4);
             EditorGUILayout.LabelField("Hugging Face Token:", EditorStyles.boldLabel);
             asset.apiKey = EditorGUILayout.PasswordField("HF_TOKEN", asset.apiKey ?? "");
 
@@ -189,7 +185,7 @@ public class GenAIPipelineWindow : EditorWindow
             }
 
             GUI.enabled = isImageSaved && !string.IsNullOrEmpty(asset.imagePath) && !isRunning && !string.IsNullOrEmpty(asset.apiKey);
-            if(GUILayout.Button(isRunning ? "Running..." : "Run Qwen Pipeline", GUILayout.Height(32)))
+            if(GUILayout.Button(isRunning ? "Running..." : "Run Image Generation Pipeline", GUILayout.Height(32)))
             {
                 RunQwenPipeline();
             }
@@ -216,7 +212,7 @@ public class GenAIPipelineWindow : EditorWindow
             // rootPath is already absolute, e.g. <project>/Assets/GenAI/<jobName>
             string outputFolder = Path.Combine(rootPath, "Output");
 
-            // 1) Find Qwen output ot be auto_rig's input
+            // 1) Find image generation output to be auto_rig's input
             string inputImage = Path.Combine(outputFolder, jobName + "_refined.png");    
 
             if (string.IsNullOrEmpty(inputImage) || !File.Exists(inputImage))
@@ -523,7 +519,7 @@ public class GenAIPipelineWindow : EditorWindow
         
         if(!File.Exists(qwenRunnerPath))
         {
-            EditorUtility.DisplayDialog("Error", $"Qwen runner not found at:\n{qwenRunnerPath}", "OK");
+            EditorUtility.DisplayDialog("Error", $"Image generation runner not found at:\n{qwenRunnerPath}", "OK");
             return;
         }
 
@@ -572,7 +568,7 @@ public class GenAIPipelineWindow : EditorWindow
         }
         else
         {
-            Debug.LogError("Qwen pipeline: unsupported platform.");
+            Debug.LogError("Image generation pipeline: unsupported platform.");
             return;
         }
 
@@ -598,7 +594,7 @@ public class GenAIPipelineWindow : EditorWindow
 
         try
         {
-            Debug.Log($"starting qwen pipeline for {jobName}");
+            Debug.Log($"starting image generation pipeline for {jobName}");
             
             currentProcess = System.Diagnostics.Process.Start(psi);
             if(currentProcess == null)
@@ -615,7 +611,7 @@ public class GenAIPipelineWindow : EditorWindow
                 if(!string.IsNullOrEmpty(e.Data))
                 {
                     standardOutput.AppendLine(e.Data);
-                    Debug.Log($"[qwen] {e.Data}");
+                    Debug.Log($"[image generation] {e.Data}");
                     runnerStatus = e.Data;
                 }
             };
@@ -625,7 +621,7 @@ public class GenAIPipelineWindow : EditorWindow
                 if(!string.IsNullOrEmpty(e.Data))
                 {
                     errorOutput.AppendLine(e.Data);
-                    Debug.LogError($"[qwen error] {e.Data}");
+                    Debug.LogError($"[image generation error] {e.Data}");
                     runnerStatus = $"Error: {e.Data}";
                 }
             };
@@ -647,7 +643,7 @@ public class GenAIPipelineWindow : EditorWindow
                     if(exitCode == 0)
                     {
                         runnerStatus = "Pipeline completed!";
-                        Debug.Log($"qwen pipeline finished for {jobCopy}");
+                        Debug.Log($"image generation pipeline finished for {jobCopy}");
                         AssetDatabase.Refresh();
                         System.Threading.Thread.Sleep(1000); // Wait 1 more second
                         
@@ -660,7 +656,7 @@ public class GenAIPipelineWindow : EditorWindow
                     else
                     {
                         runnerStatus = $"Pipeline failed with code {exitCode}";
-                        Debug.LogError($"qwen pipeline failed with code {exitCode}");
+                        Debug.LogError($"image generation pipeline failed with code {exitCode}");
                         
                         if(errorOutput.Length > 0)
                         {
