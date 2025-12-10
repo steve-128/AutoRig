@@ -37,3 +37,76 @@ pip install pygltflib
 3. Create a folder called pretrained_weights in Assets/Scripts
 4. Save the file in the Assets/Scripts/pretrained_weights folder 
 
+# Unity Setup Guide — AutoRig + Netflix Pipeline
+
+This guide explains how to properly open the project in Unity and run the character generation pipeline.
+
+---
+
+## Requirements
+
+- Unity Hub installed
+- Unity Editor **6000.2.5f1**
+- Hugging Face account and access token
+- This repository cloned locally: https://github.com/steve-128/AutoRig/
+
+---
+
+## Unity Project Setup
+
+1. Open **Unity Hub**  
+2. Click **Add project from disk**  
+3. Select the **`AutoRig`** folder (root of this repository)
+4. Set the **Editor Version** to: 6000.2.5f1
+5. **Launch** the project
+
+---
+
+## Running the Netflix Pipeline
+
+6. At the **top Unity menu bar**, open: GenAI@berkeley → Netflix Pipeline
+7. When the pipeline window opens:
+   - Set **Pipeline Asset** to: GenAI_PipelineAsset
+   
+8. Fill in the pipeline input fields:
+
+- **Image Path**  
+  Select the input image to generate the character from
+
+- **Job Name**  
+  Enter a folder name for this run  
+  - All input + output files will be saved to: Assets/GenAI/<JobName>/
+
+- **HF_TOKEN**  
+  Paste your **Hugging Face Access Token**
+
+---
+
+## Run the Pipeline
+
+9. Click **Run Pipeline**  
+   - Wait for the process to finish  
+   - When complete, the generated **character will appear in the Unity scene**
+
+---
+
+## Play Animations
+
+10. Select the generated **character** in the **Hierarchy**
+- View available **Animation modes** and set **current_mode** to desired animation
+- Click **Play** to preview animations
+
+---
+
+## Importing Additional Characters
+
+To insert a **new character**:
+
+- Run the **same pipeline again** with a new image and/or job name
+- A **new character will be added to the scene**
+- ⚠️ The previous character will **NOT be removed automatically**
+
+You must manually delete or disable old characters if needed.
+
+---
+
