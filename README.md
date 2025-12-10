@@ -9,6 +9,9 @@ It gives you:
 - A rigged character prefab
 - Ready-to-play animations you can preview in the Unity editor
 
+DeepWiki with in-depth explanations: https://deepwiki.com/steve-128/AutoRig
+Deck: https://docs.google.com/presentation/d/1oOz153M77NEF_UTOOMR24zbMWx1N-OxOtayr23uYdKg/edit?slide=id.g355984a9e45_0_1781#slide=id.g355984a9e45_0_1781 
+
 ---
 
 ## ✨ Features
