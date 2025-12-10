@@ -1,4 +1,27 @@
-# AutoRig – Python Environment Setup
+# Netflix AutoRig – From 2D Drawing to Animated Character in Unity
+
+AutoRig is a Unity + Python pipeline that turns a **hand-drawn 2D character** into a **rigged, animated character** directly inside Unity.  
+
+You give it:
+- A drawing (front view, 2 arms, 2 legs)
+- A Hugging Face token  
+It gives you:
+- A rigged character prefab
+- Ready-to-play animations you can preview in the Unity editor
+
+---
+
+## ✨ Features
+
+- **Custom drawing input** – Bring your own 2D character art.
+- **Automatic rigging** – Python pipeline detects keypoints and generates skeleton data & weights.
+- **Unity animation playback** – View and play available animations on the generated character in the Scene.
+- **Multi-character support** – Run the pipeline again to add additional characters to the same scene.
+
+> Current pipeline is designed for **humanoid-like characters** with **two arms and two legs**.
+
+---
+# Python Environment Setup
 
 This project uses a dedicated Conda environment called `netflix_f25` to manage Python dependencies.
 
@@ -37,7 +60,7 @@ pip install pygltflib
 3. Create a folder called pretrained_weights in Assets/Scripts
 4. Save the file in the Assets/Scripts/pretrained_weights folder 
 
-# Unity Setup Guide — AutoRig + Netflix Pipeline
+# Unity Setup Guide
 
 This guide explains how to properly open the project in Unity and run the character generation pipeline.
 
