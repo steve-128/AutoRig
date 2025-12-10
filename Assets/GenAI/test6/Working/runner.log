@@ -1,7 +1,0 @@
-Runner started
-VLM: starting
-VLM caption: Dragon | Green scales, sharp teeth, blue spikes, orange claws, breathing red and orange fire.
-Parsed -> creature='Dragon' features='Green scales, sharp teeth, blue spikes, orange claws, breathing red and orange fire.'
-Qwen output saved to Working/qwen.png
-FLUX output saved to Working/flux.png
-Runner finished successfully

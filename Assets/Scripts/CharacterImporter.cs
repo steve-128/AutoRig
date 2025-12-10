@@ -77,24 +77,6 @@ public class CharacterImporter : MonoBehaviour
         }
     }
 
-    private static void CleanupAllGeneratedCharacters()
-    {
-        var all = GameObject.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
-
-        foreach (var go in all)
-        {
-            if (!go) continue; 
-
-            if (go.name == "Character")
-            {
-                if (Application.isPlaying)
-                    GameObject.Destroy(go);
-                else
-                    GameObject.DestroyImmediate(go);
-            }
-        }
-    }
-
     public GameObject ImportCharacterRuntime()
     {
         return ImportInternal(inEditor: false);
@@ -105,26 +87,13 @@ public class CharacterImporter : MonoBehaviour
         return ImportInternal(inEditor: true);
     }
 
-    private GameObject currentCharacterRoot;
+    private static GameObject currentCharacterRoot;
     private GameObject ImportInternal(bool inEditor)
     {
-        // CleanupAllGeneratedCharacters();
         if (meshDataFile == null || skeletonDataFile == null || characterTexture == null)
         {
             Debug.LogError("CharacterImporter: meshDataFile, skeletonDataFile, or characterTexture is missing.");
             return null;
-        }
-
-        // Remove old character if it exists
-        if (currentCharacterRoot != null)
-        {
-            Debug.Log($"[CharacterImporter] Destroying old character: {currentCharacterRoot.name}");
-
-            if (inEditor || !Application.isPlaying)
-                DestroyImmediate(currentCharacterRoot);
-            else
-                Destroy(currentCharacterRoot);
-            currentCharacterRoot = null;
         }
 
         currentCharacterRoot = ImportCharacter();
@@ -289,7 +258,8 @@ public class CharacterImporter : MonoBehaviour
                 return characterRoot;
             }
 
-            var anim = characterRoot.AddComponent<CharacterAnimator>();
+            var anim = characterRoot.GetComponent<CharacterAnimator>() 
+                        ?? characterRoot.AddComponent<CharacterAnimator>();
             anim.SetBoneTransforms(boneTransforms);
             anim.characterRoot = characterRoot.transform;
 
