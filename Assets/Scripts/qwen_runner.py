@@ -85,12 +85,13 @@ VLM_PROMPT = (
 
 QWEN_PROMPT = (
    "Based on the drawing of a {creature} with {features}, "
-   "isolate it and remove all background clutter while preserving ALL visual elements of the creature including fire, flames, wings, tails, and any other distinctive features. "
-   "Extrapolate the full body and limbs to achieve a precise T-pose: "
-   "arms extended horizontally perpendicular to the body, legs straight and together. "
-   "Apply intricate, tactile texture and color across its entire body surface, maintaining all original features."
+   "isolate it and remove all background clutter. "
+   "Extrapolate the full body and limbs to achieve a precise skeletal position. "
+   "Render the {creature} in a clear **T-POSE**: arms extended horizontally perpendicular to the body, legs straight and together. "
+   "Apply intricate, tactile texture and color across its **entire body surface**. "
    "Integrate textures with dynamic lighting and volumetric shading. "
-   "The final image must be a front-facing, full-body, hyper-detailed, photorealistic illustration entirely within frame. "
+   "The final image must be a **front-facing**, **full-body**, hyper-detailed, **photorealistic** "
+   "illustration **entirely within frame**. "
    "Output the final image with a pure white, transparent PNG background."
 )
 
