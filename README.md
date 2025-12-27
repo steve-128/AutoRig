@@ -3,7 +3,7 @@
 AutoRig is a Unity + Python pipeline that turns a **hand-drawn 2D character** into a **rigged, animated character** directly inside Unity.  
 
 You give it:
-- A drawing (front view, 2 arms, 2 legs)
+- A drawing
 - A Hugging Face token  
 It gives you:
 - A rigged character prefab
